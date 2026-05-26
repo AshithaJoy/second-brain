@@ -691,6 +691,8 @@ export default function App(){
   const [aiGeneratingTags, setAiGeneratingTags] = useState(false);
   const [aiGeneratingPostIdeas, setAiGeneratingPostIdeas] = useState(false);
   const [discoveringBrands, setDiscoveringBrands] = useState(false);
+  const [aiEstimatingCollab, setAiEstimatingCollab] = useState(false);
+  const [estimationStep, setEstimationStep] = useState("");
   const [pitchUrl, setPitchUrl] = useState("");
   const [reelUrl, setReelUrl] = useState("");
   const [analyzingReel, setAnalyzingReel] = useState(false);
@@ -911,6 +913,75 @@ export default function App(){
       setDiscoveringBrands(false);
       setSelectedCollabId(mockLeads[0].id);
     }, 1500);
+  };
+
+  const analyzeAndEstimateCollabAI = () => {
+    if (!pitchUrl.trim() || !selectedCollabId) return;
+    setAiEstimatingCollab(true);
+    
+    setEstimationStep("Scraping brand profile feed...");
+    setTimeout(() => {
+      setEstimationStep("Analyzing brand aesthetics & visual styling...");
+      setTimeout(() => {
+        setEstimationStep("Evaluating content engagement & creator alignment...");
+        setTimeout(() => {
+          setEstimationStep("Calculating optimal rate recommendation...");
+          setTimeout(() => {
+            const activeCollab = collabs.find(x => x.id === selectedCollabId);
+            if (!activeCollab) return;
+
+            let estimatedAmount = "15000";
+            let suggestedDels = [];
+            let brandAesthetic = "cozy warm textures";
+
+            if (activeCollab.brand.toLowerCase().includes("linen") || activeCollab.brand.toLowerCase().includes("candle")) {
+              estimatedAmount = "12500";
+              suggestedDels = [
+                { id: Date.now() + 1, text: "1x Cinematic morning vlog Reel featuring brand", type: "reel", completed: false },
+                { id: Date.now() + 2, text: "2x Aesthetic Story reviews with product sticker", type: "story", completed: false }
+              ];
+              brandAesthetic = "slow living, organic neutral tones, and natural lighting";
+            } else if (activeCollab.brand.toLowerCase().includes("keyboard") || activeCollab.brand.toLowerCase().includes("tech") || activeCollab.brand.toLowerCase().includes("timer") || activeCollab.brand.toLowerCase().includes("journal") || activeCollab.brand.toLowerCase().includes("pad")) {
+              estimatedAmount = "18000";
+              suggestedDels = [
+                { id: Date.now() + 1, text: "1x High-retention workspace setup Reel", type: "reel", completed: false },
+                { id: Date.now() + 2, text: "1x Carousel detailing coding/design planning system", type: "carousel", completed: false }
+              ];
+              brandAesthetic = "minimalist desk setup, clean typography, and task workflows";
+            } else {
+              estimatedAmount = "14000";
+              suggestedDels = [
+                { id: Date.now() + 1, text: "1x Aesthetic B-Roll review Reel", type: "reel", completed: false },
+                { id: Date.now() + 2, text: "2x Daily routine integration Stories", type: "story", completed: false }
+              ];
+              brandAesthetic = "cozy creative environment, soft coffee steam, and everyday rituals";
+            }
+
+            const rates = calculateCollabRates(suggestedDels);
+
+            const pitchText = `Hi ${activeCollab.contactName || "Team"} at ${activeCollab.brand},\n\nI just completed an aesthetic assessment of your profile via ${pitchUrl}.\n\nBased on your focus on ${brandAesthetic}, I have structured a dedicated showcase campaign that aligns perfectly with my audience:\n- 1x High-retention Reel mapping your product into a slow daily routine.\n- Supporting Stories showcasing close-ups of product textures.\n\nRecommended rate package for this high-alignment concept: ₹${rates.total}.\n\nLet me know if you would like me to prepare a custom moodboard!\n\nBest,\nMe`;
+
+            setCollabs(prev => prev.map(c => {
+              if (c.id === selectedCollabId) {
+                return {
+                  ...c,
+                  quote: rates.total,
+                  negotiatedAmount: rates.total,
+                  deliverables: suggestedDels,
+                  pitchDraft: pitchText,
+                  notes: `AI Strategy Scan (${new Date().toLocaleDateString()}): Recommended rate ₹${rates.total} based on high aesthetic fit with ${brandAesthetic}.`
+                };
+              }
+              return c;
+            }));
+
+            setActivePitchTemplate("aiDraft");
+            setAiEstimatingCollab(false);
+            setEstimationStep("");
+          }, 600);
+        }, 600);
+      }, 600);
+    }, 600);
   };
 
   const generatePitchAI = () => {
@@ -1768,6 +1839,32 @@ export default function App(){
                           <div style={{fontSize:12, fontStyle:"italic", color:"var(--text-muted)", marginTop:6}}>No brand guidelines or script logged yet.</div>
                         )}
                       </div>
+
+                      {/* AI Collab Strategist */}
+                      {["dream brand", "reached out", "replied", "lead"].includes(c.status) && (
+                        <div style={{...S.card, background:"var(--accent-light)15", border:"1px solid var(--border-focus)", marginBottom:16}} className="card-in">
+                          <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
+                            <span style={{fontSize:16}}>✨</span>
+                            <h4 style={{fontSize:13, fontWeight:600, color:"var(--text-primary)", margin:0}}>AI Collab Strategist</h4>
+                          </div>
+                          <p style={{fontSize:12, color:"var(--text-secondary)", margin:"0 0 12px 0", lineHeight:1.4}}>
+                            Analyze a brand profile link to estimate the optimal collaboration amount, auto-configure deliverables, and draft pitch outreach messages.
+                          </p>
+                          <div style={{display:"flex", gap:10, alignItems:"center"}}>
+                            <input value={pitchUrl} onChange={e=>setPitchUrl(e.target.value)} placeholder="Paste brand IG / TikTok / website URL..." style={{...S.input, flex:1, padding:"6px 12px", fontSize:12}}/>
+                            <button onClick={analyzeAndEstimateCollabAI} disabled={aiEstimatingCollab || !pitchUrl} style={S.btn("var(--accent-color)", true)}>
+                              {aiEstimatingCollab ? "Analyzing..." : "Analyze & Estimate"}
+                            </button>
+                          </div>
+                          
+                          {/* Display loading steps if estimating */}
+                          {aiEstimatingCollab && (
+                            <div style={{marginTop:10, fontSize:11, color:"var(--text-muted)", fontStyle:"italic", display:"flex", alignItems:"center", gap:6}}>
+                              <span>⏳</span> {estimationStep}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Pitch drafting helper templates */}
                       <div style={{marginBottom:16,borderTop:"1px solid var(--border-color)",paddingTop:14}}>
