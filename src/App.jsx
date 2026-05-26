@@ -1,0 +1,2816 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+
+// ── constants ──────────────────────────────────────────────────────────────────
+const MOODS = ["cinematic","soft","chaotic","reflective","motivated","low-energy","rebuilding","funny","existential"];
+const MOOD_COLORS = {
+  cinematic:"#c9b99a",soft:"#d4c5e2",chaotic:"#f0a090",reflective:"#a0b8c8",
+  motivated:"#a8c8a0","low-energy":"#b8b8c8",rebuilding:"#c8b890",funny:"#f0c870",existential:"#b0a0c0",
+  quiet:"#b8c8b8",nostalgic:"#d4b8a0",dreamy:"#c0b0d8",
+  inspired:"#a0b8c8", exhausted:"#b8b8c8", proud:"#f0c870"
+};
+const VAULT_MOODS      = ["cinematic","reflective","quiet","rebuilding","nostalgic","dreamy","chaotic","soft","motivated"];
+const CLIP_TYPES       = ["video","image","screenshot","fragment"];
+const CINEMATIC_USES   = ["intro shot","transition","emotional pause","voiceover support","ending shot","filler shot"];
+const ENERGY_LEVELS    = ["quiet","soft","neutral","energetic","chaotic"];
+const TIME_OF_DAY      = ["golden hour","morning","afternoon","blue hour","evening","night","overcast"];
+const WEATHER_OPTIONS  = ["sunny","overcast","rainy","foggy","cloudy","golden","blue hour","stormy"];
+const LIGHTING_OPTIONS = ["natural","golden","warm lamp","neon","overcast","harsh","soft window","backlit"];
+const MOTION_TYPES     = ["static","slow pan","handheld","timelapse","slow-mo","tracking","close-up","aerial"];
+
+const POST_TYPES   = ["reel","carousel","story","note"];
+const TYPE_ICONS   = {reel:"▶",carousel:"⊞",story:"◯",note:"✎"};
+const DAYS         = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTHS       = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const STATUS_COLORS= {draft:"#c9b99a",scheduled:"#a8c8a0",posted:"#a0b8c8",archived:"#b8b8c8"};
+
+const RATES = {
+  reel: 500,
+  story: 50,
+  carousel: 300,
+  photo: 200,
+  custom: 100
+};
+
+const parseQuantity = (text) => {
+  if (!text) return 1;
+  const match = String(text).match(/^(\d+)\s*x/i);
+  return match ? parseInt(match[1], 10) : 1;
+};
+
+const calculateCollabRates = (deliverables) => {
+  let reels = 0;
+  let stories = 0;
+  let carousels = 0;
+  let photos = 0;
+  let customs = [];
+  
+  if (Array.isArray(deliverables)) {
+    deliverables.forEach(d => {
+      const qty = parseQuantity(d.text);
+      const type = d.type || "custom";
+      if (type === "reel") reels += qty;
+      else if (type === "story") stories += qty;
+      else if (type === "carousel") carousels += qty;
+      else if (type === "photo") photos += qty;
+      else {
+        customs.push({ text: d.text, qty, price: d.price || RATES.custom });
+      }
+    });
+  }
+  
+  const reelsBase = reels * RATES.reel;
+  const reelsCost = Math.floor(reels / 2) * 900 + (reels % 2) * 500;
+  const reelsDiscount = reelsBase - reelsCost;
+  
+  const storiesCost = stories * RATES.story;
+  const carouselsCost = carousels * RATES.carousel;
+  const photosCost = photos * RATES.photo;
+  
+  let customsCost = 0;
+  customs.forEach(c => { customsCost += c.qty * c.price; });
+  
+  const subtotal = reelsBase + storiesCost + carouselsCost + photosCost + customsCost;
+  const discount = reelsDiscount;
+  const total = subtotal - discount;
+  
+  return {
+    reels,
+    stories,
+    carousels,
+    photos,
+    reelsCost,
+    reelsDiscount,
+    storiesCost,
+    carouselsCost,
+    photosCost,
+    customsCost,
+    subtotal,
+    discount,
+    total,
+    customs
+  };
+};
+
+const MICROCOPY    = [
+  "something cinematic could happen today","still processing, and that's okay",
+  "go film the coffee before it gets cold","your future self will thank you",
+  "chaos is just unedited creativity","even small posts count",
+  "the light is good right now","document the ordinary moments",
+];
+const DUMP_PLACEHOLDERS = [
+  "trying to fix my sleep schedule...","POV: rebuilding life slowly",
+  "gym comeback but mentally tired","late-night overthinking voiceover",
+  "rainy evening thoughts","that thing I noticed on the walk home",
+  "the feeling before everything changes",
+];
+const STORAGE = {
+  posts:"sb-posts",dumps:"sb-dumps",shoots:"sb-shoots",
+  tab:"sb-tab",shootFilter:"sb-shootFilter",vault:"sb-vault",
+  journal:"sb-journal",collabs:"sb-collabs",trends:"sb-trends",
+  theme:"sb-theme",niche:"sb-niche"
+};
+
+// ── date helpers ───────────────────────────────────────────────────────────────
+const pad         = n => String(n).padStart(2,"0");
+const getNow      = () => new Date();
+const toDateStr   = d => { if(!(d instanceof Date)||isNaN(d)) return ""; return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const fromDateStr = s => { if(!s||typeof s!=="string") return null; const p=s.split("-").map(Number); if(p.length!==3||p.some(isNaN)) return null; const d=new Date(p[0],p[1]-1,p[2]); return isNaN(d.getTime())?null:d; };
+const friendlyDate= s => { const d=fromDateStr(s); if(!d) return ""; return `${MONTHS[d.getMonth()].slice(0,3)} ${d.getDate()}`; };
+const isToday     = s => { const d=fromDateStr(s); if(!d) return false; const t=getNow(); return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth()&&d.getDate()===t.getDate(); };
+const isThisWeek  = s => { const d=fromDateStr(s); if(!d) return false; const t=getNow(); const st=new Date(t); st.setDate(t.getDate()-t.getDay()); st.setHours(0,0,0,0); const en=new Date(st); en.setDate(st.getDate()+7); return d>=st&&d<en; };
+const isThisMonth = s => { const d=fromDateStr(s); if(!d) return false; const t=getNow(); return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth(); };
+const isUpcoming  = s => { const d=fromDateStr(s); if(!d) return false; const t=getNow(); t.setHours(0,0,0,0); return d>=t; };
+const daysOffset  = n => { const d=new Date(); d.setDate(d.getDate()+n); return toDateStr(d); };
+const prevMonth   = (y,m) => m===0?[y-1,11]:[y,m-1];
+const nextMonth   = (y,m) => m===11?[y+1,0]:[y,m+1];
+const todayStr    = toDateStr(getNow());
+
+// ── localStorage ───────────────────────────────────────────────────────────────
+const load = (key,fb) => { try { const v=localStorage.getItem(key); return v?JSON.parse(v):fb; } catch { return fb; } };
+const save = (key,val) => { try { localStorage.setItem(key,JSON.stringify(val)); } catch {} };
+
+// ── seed data ──────────────────────────────────────────────────────────────────
+const SEED_POSTS  = [
+  {id:1,date:daysOffset(3),title:"gym comeback reel",type:"reel",status:"draft",mood:"motivated",caption:"",hashtags:"",shootId:null},
+  {id:2,date:daysOffset(8),title:"morning routine",type:"carousel",status:"scheduled",mood:"soft",caption:"",hashtags:"",shootId:null},
+  {id:3,date:daysOffset(-3),title:"overthinking voiceover",type:"story",status:"posted",mood:"existential",caption:"",hashtags:"",shootId:null},
+];
+const SEED_DUMPS  = [
+  {id:1,title:"late night spiral",text:"POV: rebuilding life slowly — the quiet mornings, the gym, the coffee ritual",mood:"rebuilding",ts:"2h ago",archived:false},
+  {id:2,title:"cinematic moment",text:"the light through the window at 6am hits different when you're the only one awake",mood:"cinematic",ts:"yesterday",archived:false},
+];
+const SEED_SHOOTS = [
+  {id:101,name:"Gym Comeback Session",shootDate:daysOffset(2),postId:1,slots:{morning:[{id:1,shot:"golden hour window",loc:"bedroom",mood:"soft",light:"natural",angle:"low angle",props:"coffee mug"}],afternoon:[{id:2,shot:"gym warmup footage",loc:"gym",mood:"motivated",light:"fluorescent",angle:"side profile",props:"water bottle"}],evening:[]}},
+  {id:102,name:"Morning Routine",shootDate:daysOffset(7),postId:2,slots:{morning:[{id:3,shot:"coffee ritual close-up",loc:"kitchen",mood:"soft",light:"warm lamp",angle:"overhead",props:"white mug"}],afternoon:[],evening:[]}},
+];
+const SEED_VAULT  = [
+  {id:201,title:"rainy car window",description:"rainy car window after gym — drops trailing down, city blur behind, quiet and heavy feeling",mood:"reflective",visualTags:["rain","window","car","blur"],emotionTags:["heavy","quiet","post-workout"],location:"car",lighting:"overcast",motionType:"static",audioFeeling:"white noise, rain",timeOfDay:"evening",weather:"rainy",clipType:"video",cinematicUse:"emotional pause",energy:"quiet",notes:"",fileUrl:"",thumbnailUrl:"",favorite:true,createdAt:daysOffset(-5)},
+  {id:202,title:"morning coffee steam",description:"peaceful coffee steam rising in soft morning light — the moment before the day begins",mood:"soft",visualTags:["coffee","steam","morning","warmth"],emotionTags:["peaceful","hopeful","slow"],location:"kitchen",lighting:"soft window",motionType:"static",audioFeeling:"silence, occasional bird",timeOfDay:"morning",weather:"sunny",clipType:"video",cinematicUse:"intro shot",energy:"soft",notes:"good for voiceover support",fileUrl:"",thumbnailUrl:"",favorite:false,createdAt:daysOffset(-12)},
+  {id:203,title:"blue hour walk",description:"quiet walking footage during blue hour — tired but present, city quiet, footsteps on pavement",mood:"cinematic",visualTags:["walk","city","blue hour","pavement"],emotionTags:["tired","present","rebuilding"],location:"street",lighting:"blue hour",motionType:"handheld",audioFeeling:"footsteps, distant traffic",timeOfDay:"blue hour",weather:"cloudy",clipType:"video",cinematicUse:"voiceover support",energy:"quiet",notes:"",fileUrl:"",thumbnailUrl:"",favorite:true,createdAt:daysOffset(-2)},
+];
+const SEED_JOURNAL = [
+  {id:301,weekStart:daysOffset(-14),followers:1240,posts:3,reach:8900,saves:45,engagement:"5.1",mood:"reflective",wins:"Posted my first voiceover reel\nKept editing simple and personal",lessons:"Overcomplicating the color grade delayed posting. Warm lamp lighting is enough.",reflection:"It felt scary to put my voice out there, but slow aesthetics and real words connect better.",notes:"",createdAt:daysOffset(-14)},
+  {id:302,weekStart:daysOffset(-7),followers:1310,posts:4,reach:12500,saves:72,engagement:"6.2",mood:"motivated",wins:"3-day consistency streak\nFirst brand responded to my query\nTried a cinematic list template",lessons:"Aesthetic steam close-ups have high save rates. Set up tripod before breakfast.",reflection:"Seeing metrics grow slowly is motivating, but focusing on the joy of filming coffee steam is the real win.",notes:"",createdAt:daysOffset(-7)}
+];
+const SEED_COLLABS = [
+  {id:401,brand:"Slow Grind Coffee",contactName:"Elena Rostova",email:"elena@slowgrind.co",platform:"Instagram",status:"discussing",quote:"500",negotiatedAmount:"450",deliverables:"1x Reel showcasing slow morning routine\n2x Stories with link sticker",dueDate:daysOffset(10),paymentStatus:"invoice sent",notes:"Requested warm tones, voiceover about slow productivity.",pitchDraft:"Hi Elena, I love slow morning rituals and built a quiet community of 1.3k creators. I would love to film a cinematic segment featuring Slow Grind Coffee...",followUpDraft:"Hi Elena, just checking in to see if the timeline for the reel fits your upcoming launch schedule.",createdAt:daysOffset(-4)},
+  {id:402,brand:"Kinfolk Publishing",contactName:"Marcus Aurel",email:"collabs@kinfolk.com",platform:"Instagram",status:"dream brand",quote:"0",negotiatedAmount:"0",deliverables:"1x Carousel review of the slow living quarterly",dueDate:"",paymentStatus:"unpaid",notes:"Planning outreach once I reach 2k followers.",pitchDraft:"",followUpDraft:"",createdAt:daysOffset(-18)},
+  {id:403,brand:"Oasis Desk Pads",contactName:"Sarah Jenkins",email:"sarah@oasis.co",platform:"Instagram",status:"completed",quote:"300",negotiatedAmount:"300",deliverables:"1x Reel showing workspace setup",dueDate:daysOffset(-8),paymentStatus:"paid",notes:"Super smooth, loved the panning shots of their green cork pad.",pitchDraft:"",followUpDraft:"",createdAt:daysOffset(-25)}
+];
+
+const COLLAB_TEMPLATES = {
+  outreach: {
+    label: "first outreach",
+    subject: "Collaboration query: [Your Name] x [Brand Name]",
+    body: "Hi [Contact Name],\n\nI’ve been documenting my journey of slow creation on my page, and my community of creators absolutely loves content around aesthetic and sustainable workspaces. I’m a huge fan of [Brand Name] and have been using your products in my daily setup.\n\nI’d love to pitch a cinematic showcase reel incorporating your brand. Let me know if you’re open to discussing a collaboration!\n\nWarmly,\n[Your Name]"
+  },
+  pricing: {
+    label: "pricing response",
+    subject: "Rates sheet & deliverables: [Your Name] x [Brand Name]",
+    body: "Hi [Contact Name],\n\nThank you for reaching back! My standard rate for a dedicated Reel and supporting Story series is $[Rate]. This includes custom footage, high-fidelity audio syncing, caption scripting, and 30-day usage rights.\n\nI’m happy to package this or adapt it to align with your seasonal campaign goals.\n\nBest,\n[Your Name]"
+  },
+  followUp: {
+    label: "follow-up nudge",
+    subject: "Follow up: [Your Name] x [Brand Name]",
+    body: "Hi [Contact Name],\n\nHope your week is going well! Just checking in on my previous message regarding a potential collaboration. I’d love to lock in the timeline for next month if you’re interested.\n\nLooking forward to hearing from you,\n[Your Name]"
+  }
+};
+
+const NICHES = [
+  {id: "minimalist-productivity", label: "minimalist productivity", tags:["desk", "workplace", "typing", "routine", "quiet", "planning"]},
+  {id: "aesthetic-lifestyle", label: "aesthetic lifestyle", tags:["coffee", "steam", "morning", "sunlight", "cozy", "rain"]},
+  {id: "build-in-public", label: "building in public", tags:["desk", "typing", "screen", "process", "chaos", "rebuilding"]}
+];
+
+const MOCK_TRENDS_DATA = {
+  "minimalist-productivity": [
+    {id:501,title:"The 3-Second Realization Hook",views:"850K views",postedDate:"3d ago",hook:"Here's the exact moment everything shifted...",whyItWorked:"It triggers curiosity immediately by starting with the transition, not the end state. Visuals show a busy workspace, then cut to empty hands or calendar.",audioTrack:"Bleeding Love (Leona Lewis) ↗",audioTrending:true,keyTakeaway:"Record a close-up of typing on a keyboard, then cut to your calendar. Overlay realization text.",visualTags:["desk", "typing", "workplace"]},
+    {id:502,title:"Silent Desk Organization",views:"1.2M views",postedDate:"5d ago",hook:"Small systems still count as systems.",whyItWorked:"Audiences find organizational ASMR relaxing. Pair with list-based captions punctuted by trending beats.",audioTrack:"EVERYTHING HALLELUJAH (Justin Bieber) ↗",audioTrending:true,keyTakeaway:"Record desk cleanup clips. Use rhythmic sound design matching the audio beats.",visualTags:["desk", "planning", "quiet"]}
+  ],
+  "aesthetic-lifestyle": [
+    {id:503,title:"Morning Coffee Steam Close-Up",views:"2.1M views",postedDate:"2d ago",hook:"POV: Rebuilding life slowly, one morning at a time.",whyItWorked:"Satisfying visual of coffee brewing mixed with golden hour lighting. Relies on microcopy about slow progress and warm emotional aesthetics.",audioTrack:"Be Like a Woman (Chris Rainbow) ↗",audioTrending:true,keyTakeaway:"Tripod close-up of steam rising in golden morning light. Slow handheld pan around the mug.",visualTags:["coffee", "steam", "morning"]},
+    {id:504,title:"Rainy Evening Reflection",views:"980K views",postedDate:"4d ago",hook:"Documenting the quiet moments before everything changes.",whyItWorked:"Moody, blue-toned visuals paired with heavy rain noise and slow transitions. Relies on high-empathy confessional voiceover.",audioTrack:"Material Lover (Sienna Spiro) ↗",audioTrending:true,keyTakeaway:"Film rain sliding down window from inside car or desk. Mute original sound and add rain ASMR.",visualTags:["rain", "cozy", "sunlight"]}
+  ],
+  "build-in-public": [
+    {id:505,title:"The Chaos vs. Creation Split",views:"740K views",postedDate:"1d ago",hook:"'You are so creative!' -> POV: the messy reality.",whyItWorked:"Shows the unpolished, chaotic desk space behind a clean, beautiful output. High relatability for digital builders.",audioTrack:"Dracula (JENNIE Remix) ↗",audioTrending:true,keyTakeaway:"Take a wide zoom shot of a chaotic workspace. Transition into a polished close-up of the laptop screen.",visualTags:["desk", "screen", "chaos"]},
+    {id:506,title:"Late Night Coding Loop",views:"1.1M views",postedDate:"6d ago",hook:"POV: trying to fix my sleep schedule but the code is finally compile-ready.",whyItWorked:"Warm keyboard light contrast. Fits the 'tired but motivated' mindset of builders.",audioTrack:"Vogue (Madonna Edit) ↗",audioTrending:false,keyTakeaway:"Place warm lamp light behind monitor. Slow tracking shot from screen to face.",visualTags:["desk", "typing", "process"]}
+  ]
+};
+
+// ── shared tiny components ─────────────────────────────────────────────────────
+function Tag({label,color,size=12}){
+  return <span style={{fontSize:size,padding:"2px 9px",borderRadius:20,background:color+"22",color,fontWeight:500,letterSpacing:0.3,whiteSpace:"nowrap"}}>{label}</span>;
+}
+function MoodPicker({value,onChange,moods=MOODS}){
+  return(
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,margin:"6px 0"}}>
+      {moods.map(m=>(
+        <button key={m} onClick={()=>onChange(m===value?"":m)} style={{
+          padding:"4px 13px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"inherit",
+          border:value===m?`1.5px solid ${MOOD_COLORS[m]||"#c9b99a"}`:"1px solid var(--border-color)",
+          background:value===m?(MOOD_COLORS[m]||"#c9b99a")+"22":"transparent",
+          color:value===m?(MOOD_COLORS[m]||"#c9b99a"):"var(--text-secondary)",
+          fontWeight:value===m?600:400,transition:"all 0.18s",
+        }}>{m}</button>
+      ))}
+    </div>
+  );
+}
+function NavBtn({onClick,children,active=false,color="#b0a898"}){
+  return(
+    <button onClick={onClick} style={{
+      background:"none",border:`1px solid ${active?color+"80":"var(--border-color)"}`,borderRadius:20,
+      padding:"5px 14px",fontSize:12,cursor:"pointer",color:active?color:"var(--text-secondary)",
+      fontFamily:"inherit",transition:"all 0.18s",
+    }}>{children}</button>
+  );
+}
+function ChipSelect({label,options,value,onChange}){
+  return(
+    <div>
+      <span style={{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4}}>{label}</span>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+        {options.map(o=>(
+          <button key={o} onClick={()=>onChange(value===o?"":o)} style={{
+            padding:"3px 11px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"inherit",
+            border:value===o?"1.5px solid var(--border-focus)":"1px solid var(--border-color)",
+            background:value===o?"var(--accent-light)":"transparent",
+            color:value===o?"var(--text-primary)":"var(--text-muted)",transition:"all 0.15s",
+          }}>{o}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── B-ROLL VAULT COMPONENT ─────────────────────────────────────────────────────
+function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery}){
+  const [view,setView]         = useState("grid");    // grid | detail | add
+  const [selected,setSelected] = useState(null);
+  const [filterMood,setFilterMood]   = useState("");
+  const [filterUse,setFilterUse]     = useState("");
+  const [filterEnergy,setFilterEnergy] = useState("");
+  const [filterFav,setFilterFav]     = useState(false);
+  const [showFilters,setShowFilters]  = useState(false);
+  const fileRef = useRef();
+
+  const emptyClip = () => ({
+    id:Date.now(),title:"",description:"",mood:"cinematic",
+    visualTags:[],emotionTags:[],location:"",lighting:"",motionType:"",
+    audioFeeling:"",timeOfDay:"",weather:"",clipType:"video",
+    cinematicUse:"",energy:"soft",notes:"",fileUrl:"",thumbnailUrl:"",
+    favorite:false,createdAt:todayStr,
+  });
+  const [form,setForm] = useState(emptyClip());
+  const [tagInput,setTagInput]   = useState("");
+  const [eTagInput,setETagInput] = useState("");
+  const [previewUrl,setPreviewUrl] = useState("");
+
+  const updateForm = patch => setForm(f=>({...f,...patch}));
+
+  const handleFile = e => {
+    const file = e.target.files?.[0]; if(!file) return;
+    const url  = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    updateForm({fileUrl:url, thumbnailUrl:url, clipType: file.type.startsWith("video")?"video":"image"});
+  };
+
+  const saveClip = () => {
+    if(!form.title.trim()) return;
+    setVault(v=>[{...form,id:Date.now(),createdAt:todayStr},...v]);
+    setForm(emptyClip()); setPreviewUrl(""); setView("grid");
+  };
+
+  const toggleFav = id => setVault(v=>v.map(c=>c.id===id?{...c,favorite:!c.favorite}:c));
+  const deleteClip= id => { setVault(v=>v.filter(c=>c.id!==id)); setView("grid"); setSelected(null); };
+
+  const filtered = vault.filter(c=>{
+    const q = vaultSearchQuery.toLowerCase();
+    const matchSearch = !q || c.title.toLowerCase().includes(q)||c.description.toLowerCase().includes(q)||
+      (c.visualTags||[]).some(t=>t.toLowerCase().includes(q))||(c.emotionTags||[]).some(t=>t.toLowerCase().includes(q))||
+      c.location?.toLowerCase().includes(q)||c.mood?.toLowerCase().includes(q);
+    const matchMood   = !filterMood   || c.mood===filterMood;
+    const matchUse    = !filterUse    || c.cinematicUse===filterUse;
+    const matchEnergy = !filterEnergy || c.energy===filterEnergy;
+    const matchFav    = !filterFav    || c.favorite;
+    return matchSearch&&matchMood&&matchUse&&matchEnergy&&matchFav;
+  });
+
+  const S = {
+    input:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",boxSizing:"border-box"},
+    textarea:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",resize:"vertical",minHeight:70,boxSizing:"border-box"},
+    label:{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4},
+    card:{background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)",padding:"18px",marginBottom:12},
+    btn:(color="#c9b99a",sm=false)=>({padding:sm?"4px 12px":"8px 17px",borderRadius:20,border:`1px solid ${color}`,background:`${color}16`,color,fontSize:sm?11:12,cursor:"pointer",fontFamily:"inherit",transition:"all 0.18s"}),
+    row:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"},
+    grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12},
+  };
+
+  // ── ADD FORM ────────────────────────────────────────────────────────────────
+  if(view==="add") return(
+    <div style={{maxWidth:680,margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <button onClick={()=>setView("grid")} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)",fontSize:20,fontFamily:"inherit"}}>←</button>
+        <h2 style={{margin:0,fontSize:18,fontWeight:400,color:"var(--text-primary)"}}>new memory</h2>
+      </div>
+
+      {/* upload zone */}
+      <div onClick={()=>fileRef.current?.click()} style={{
+        border:"2px dashed var(--border-color)",borderRadius:16,padding:"32px",textAlign:"center",
+        cursor:"pointer",marginBottom:16,background:previewUrl?"var(--bg-secondary)":"var(--bg-primary)",
+        transition:"all 0.2s",position:"relative",overflow:"hidden",minHeight:140,
+      }}>
+        <input ref={fileRef} type="file" accept="video/*,image/*" style={{display:"none"}} onChange={handleFile}/>
+        {previewUrl?(
+          form.clipType==="video"
+            ? <video src={previewUrl} style={{maxHeight:200,borderRadius:10,maxWidth:"100%"}} controls/>
+            : <img src={previewUrl} style={{maxHeight:200,borderRadius:10,maxWidth:"100%",objectFit:"cover"}} alt="preview"/>
+        ):(
+          <div>
+            <div style={{fontSize:28,marginBottom:8,opacity:0.4}}>◎</div>
+            <div style={{fontSize:14,color:"var(--text-muted)",fontStyle:"italic"}}>drop a clip, screenshot, or cinematic moment</div>
+            <div style={{fontSize:12,color:"var(--text-muted)",opacity:0.8,marginTop:4}}>video · image · fragment · anything worth keeping</div>
+          </div>
+        )}
+      </div>
+
+      <div style={S.card}>
+        <div style={{marginBottom:12}}>
+          <span style={S.label}>title</span>
+          <input value={form.title} onChange={e=>updateForm({title:e.target.value})} placeholder="rainy car window after gym..." style={S.input}/>
+        </div>
+        <div>
+          <span style={S.label}>emotional description <span style={{color:"var(--accent-color)"}}>*</span></span>
+          <textarea value={form.description} onChange={e=>updateForm({description:e.target.value})}
+            placeholder="describe the feeling, not just the content — this is how you'll find it later..."
+            style={{...S.textarea,minHeight:90}}/>
+          <div style={{fontSize:11,color:"var(--text-muted)",marginTop:4,fontStyle:"italic"}}>e.g. "quiet walking footage during blue hour — tired but present, city soft behind me"</div>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={{fontSize:13,color:"var(--text-secondary)",fontWeight:500,marginBottom:12}}>emotional metadata</div>
+        <div style={{marginBottom:12}}>
+          <span style={S.label}>mood</span>
+          <MoodPicker value={form.mood} onChange={m=>updateForm({mood:m})} moods={VAULT_MOODS}/>
+        </div>
+        <div style={{...S.grid2,marginBottom:12}}>
+          <div>
+            <span style={S.label}>visual tags</span>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+              {(form.visualTags||[]).map(t=>(
+                <span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"var(--accent-light)",color:"var(--accent-dark)",cursor:"pointer"}} onClick={()=>updateForm({visualTags:form.visualTags.filter(x=>x!==t)})}>
+                  {t} ×
+                </span>
+              ))}
+            </div>
+            <input value={tagInput} onChange={e=>setTagInput(e.target.value)} placeholder="rain, window, city... (enter)" style={{...S.input,fontSize:12}}
+              onKeyDown={e=>{if((e.key==="Enter"||e.key===",")&&tagInput.trim()){updateForm({visualTags:[...(form.visualTags||[]),tagInput.trim()]});setTagInput("");}}}/>
+          </div>
+          <div>
+            <span style={S.label}>emotion tags</span>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+              {(form.emotionTags||[]).map(t=>(
+                <span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"#d4c5e222",color:"#8878a0",cursor:"pointer"}} onClick={()=>updateForm({emotionTags:form.emotionTags.filter(x=>x!==t)})}>
+                  {t} ×
+                </span>
+              ))}
+            </div>
+            <input value={eTagInput} onChange={e=>setETagInput(e.target.value)} placeholder="heavy, quiet, hopeful... (enter)" style={{...S.input,fontSize:12}}
+              onKeyDown={e=>{if((e.key==="Enter"||e.key===",")&&eTagInput.trim()){updateForm({emotionTags:[...(form.emotionTags||[]),eTagInput.trim()]});setETagInput("");}}}/>
+          </div>
+        </div>
+        <div style={S.grid2}>
+          <ChipSelect label="cinematic use" options={CINEMATIC_USES} value={form.cinematicUse} onChange={v=>updateForm({cinematicUse:v})}/>
+          <ChipSelect label="energy" options={ENERGY_LEVELS} value={form.energy} onChange={v=>updateForm({energy:v})}/>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={{fontSize:13,color:"var(--text-secondary)",fontWeight:500,marginBottom:12}}>technical details</div>
+        <div style={{...S.grid2,gap:12}}>
+          <ChipSelect label="time of day"  options={TIME_OF_DAY}      value={form.timeOfDay}   onChange={v=>updateForm({timeOfDay:v})}/>
+          <ChipSelect label="weather"      options={WEATHER_OPTIONS}   value={form.weather}     onChange={v=>updateForm({weather:v})}/>
+          <ChipSelect label="lighting"     options={LIGHTING_OPTIONS}  value={form.lighting}    onChange={v=>updateForm({lighting:v})}/>
+          <ChipSelect label="motion type"  options={MOTION_TYPES}      value={form.motionType}  onChange={v=>updateForm({motionType:v})}/>
+        </div>
+        <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>
+            <span style={S.label}>location</span>
+            <input value={form.location} onChange={e=>updateForm({location:e.target.value})} placeholder="bedroom, street, gym..." style={S.input}/>
+          </div>
+          <div>
+            <span style={S.label}>audio feeling</span>
+            <input value={form.audioFeeling} onChange={e=>updateForm({audioFeeling:e.target.value})} placeholder="rain, silence, distant traffic..." style={S.input}/>
+          </div>
+        </div>
+        <div style={{marginTop:12}}>
+          <span style={S.label}>notes</span>
+          <textarea value={form.notes} onChange={e=>updateForm({notes:e.target.value})} placeholder="anything else worth remembering..." style={S.textarea}/>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginBottom:32}}>
+        <button style={S.btn("var(--text-muted)")} onClick={()=>{setForm(emptyClip());setPreviewUrl("");setView("grid");}}>cancel</button>
+        <button style={S.btn("var(--accent-color)")} onClick={saveClip} disabled={!form.title.trim()}>save to vault</button>
+      </div>
+    </div>
+  );
+
+  // ── DETAIL VIEW ─────────────────────────────────────────────────────────────
+  if(view==="detail"&&selected){
+    const c=selected;
+    return(
+      <div style={{maxWidth:680,margin:"0 auto"}} className="card-in">
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+          <button onClick={()=>{setView("grid");setSelected(null);}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)",fontSize:20}}>←</button>
+          <h2 style={{margin:0,fontSize:18,fontWeight:400,color:"var(--text-primary)",flex:1}}>{c.title}</h2>
+          <button onClick={()=>toggleFav(c.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20}}>{c.favorite?"♥":"♡"}</button>
+          <button onClick={()=>deleteClip(c.id)} style={{...S.btn("#f0a090",true)}}>delete</button>
+        </div>
+
+        {c.thumbnailUrl&&(
+          <div style={{borderRadius:16,overflow:"hidden",marginBottom:16,background:"var(--border-color)",maxHeight:300}}>
+            {c.clipType==="video"
+              ? <video src={c.thumbnailUrl} style={{width:"100%",maxHeight:300,objectFit:"cover"}} controls/>
+              : <img src={c.thumbnailUrl} style={{width:"100%",maxHeight:300,objectFit:"cover"}} alt={c.title}/>
+            }
+          </div>
+        )}
+        {!c.thumbnailUrl&&(
+          <div style={{borderRadius:16,background:"var(--bg-secondary)",border:"1px solid var(--border-color)",height:180,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
+            <span style={{fontSize:36,opacity:0.2}}>◎</span>
+          </div>
+        )}
+
+        <div style={S.card}>
+          <div style={{fontSize:15,color:"var(--text-primary)",lineHeight:1.7,fontStyle:"italic",marginBottom:12}}>"{c.description}"</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {c.mood&&<Tag label={c.mood} color={MOOD_COLORS[c.mood]||"#c9b99a"}/>}
+            {c.cinematicUse&&<Tag label={c.cinematicUse} color="#a0b8c8"/>}
+            {c.energy&&<Tag label={c.energy} color="#c8b890"/>}
+          </div>
+        </div>
+
+        <div style={{...S.grid2,gap:12,marginBottom:12}}>
+          <div style={S.card}>
+            <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:8}}>emotional</div>
+            {(c.emotionTags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>{(c.emotionTags||[]).map(t=><span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"#d4c5e222",color:"#8878a0"}}>{t}</span>)}</div>}
+            {(c.visualTags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5}}>{(c.visualTags||[]).map(t=><span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"var(--accent-light)",color:"var(--accent-dark)"}}>{t}</span>)}</div>}
+          </div>
+          <div style={S.card}>
+            <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:8}}>scene details</div>
+            {[["📍",c.location],["◎",c.lighting],["⌗",c.motionType],["☀",c.timeOfDay],["☁",c.weather],["♬",c.audioFeeling]].filter(([,v])=>v).map(([ic,v])=>(
+              <div key={v} style={{fontSize:12,color:"var(--text-secondary)",marginBottom:4}}><span style={{opacity:0.5}}>{ic}</span> {v}</div>
+            ))}
+          </div>
+        </div>
+
+        {c.notes&&(
+          <div style={{...S.card,borderLeft:"3px solid var(--accent-color)"}}>
+            <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:4}}>notes</div>
+            <div style={{fontSize:13,color:"var(--text-primary)",lineHeight:1.6}}>{c.notes}</div>
+          </div>
+        )}
+        <div style={{fontSize:11,color:"var(--text-muted)",textAlign:"right",marginTop:4}}>captured {friendlyDate(c.createdAt)}</div>
+      </div>
+    );
+  }
+
+  // ── GRID VIEW ───────────────────────────────────────────────────────────────
+  return(
+    <div>
+      {/* top bar */}
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
+        <div style={{flex:1,position:"relative",minWidth:160}}>
+          <input value={vaultSearchQuery} onChange={e=>setVaultSearchQuery(e.target.value)}
+            placeholder="search by feeling, location, tags..."
+            style={{...S.input,paddingLeft:32,fontSize:13}}/>
+          <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:"var(--text-muted)",fontSize:14,pointerEvents:"none"}}>⌕</span>
+          {vaultSearchQuery && <button onClick={()=>setVaultSearchQuery("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)"}}>×</button>}
+        </div>
+        <NavBtn onClick={()=>setShowFilters(f=>!f)} active={showFilters} color="var(--accent-color)">
+          {showFilters?"hide filters":"filter"}
+        </NavBtn>
+        <button onClick={()=>setFilterFav(f=>!f)} style={{
+          background:"none",border:`1px solid ${filterFav?"#f0a090":"var(--border-color)"}`,borderRadius:20,
+          padding:"5px 14px",fontSize:12,cursor:"pointer",color:filterFav?"#f0a090":"var(--text-secondary)",fontFamily:"inherit",
+        }}>{filterFav?"♥ favorites":"♡ favorites"}</button>
+        <button style={S.btn("var(--accent-color)")} onClick={()=>setView("add")}>+ new clip</button>
+      </div>
+
+      {showFilters&&(
+        <div style={{...S.card,marginBottom:16,padding:"14px 18px"}} className="card-in">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+            <ChipSelect label="mood"         options={VAULT_MOODS}    value={filterMood}   onChange={setFilterMood}/>
+            <ChipSelect label="cinematic use" options={CINEMATIC_USES} value={filterUse}    onChange={setFilterUse}/>
+            <ChipSelect label="energy"        options={ENERGY_LEVELS}  value={filterEnergy} onChange={setFilterEnergy}/>
+          </div>
+          {(filterMood||filterUse||filterEnergy)&&(
+            <button onClick={()=>{setFilterMood("");setFilterUse("");setFilterEnergy("");}} style={{...S.btn("var(--text-muted)",true),marginTop:10}}>clear filters</button>
+          )}
+        </div>
+      )}
+
+      {/* empty state */}
+      {vault.length===0&&(
+        <div style={{textAlign:"center",paddingTop:80,color:"var(--text-muted)",lineHeight:2.2}}>
+          <div style={{fontSize:36,opacity:0.18,marginBottom:8}}>◎</div>
+          <div style={{fontSize:15,fontStyle:"italic"}}>your future montages live here</div>
+          <div style={{fontSize:12}}>capture ordinary moments before they disappear</div>
+          <div style={{fontSize:12}}>the quiet clips matter too</div>
+          <button style={{...S.btn("var(--accent-color)"),marginTop:20}} onClick={()=>setView("add")}>add your first clip</button>
+        </div>
+      )}
+
+      {vault.length>0&&filtered.length===0&&(
+        <div style={{textAlign:"center",paddingTop:60,color:"var(--text-muted)",fontStyle:"italic",fontSize:14}}>
+          <div>nothing matches that feeling</div>
+          <div style={{fontSize:12,marginTop:4}}>try different words or clear your filters</div>
+        </div>
+      )}
+
+      {/* masonry grid */}
+      <div className="masonry-grid">
+        {filtered.map(c=>(
+          <div key={c.id} onClick={()=>{setSelected(c);setView("detail");}} style={{
+            breakInside:"avoid",marginBottom:14,borderRadius:16,
+            background:"var(--bg-secondary)",border:"1px solid var(--border-color)",
+            overflow:"hidden",cursor:"pointer",transition:"all 0.2s",
+          }}
+            onMouseEnter={e=>{e.currentTarget.style.boxShadow="var(--shadow-md)";e.currentTarget.style.transform="translateY(-2px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="translateY(0)";}}
+          >
+            {/* thumbnail */}
+            {c.thumbnailUrl?(
+              c.clipType==="video"
+                ? <div style={{height:140,background:"var(--border-color)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+                    <video src={c.thumbnailUrl} style={{width:"100%",height:140,objectFit:"cover"}}/>
+                    <div style={{position:"absolute",top:8,right:8,background:"#00000040",borderRadius:20,padding:"2px 8px",fontSize:10,color:"#fff"}}>▶ video</div>
+                  </div>
+                : <img src={c.thumbnailUrl} style={{width:"100%",height:140,objectFit:"cover",display:"block"}} alt={c.title}/>
+            ):(
+              <div style={{height:100,background:`${MOOD_COLORS[c.mood]||"#c9b99a"}18`,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid var(--border-color)"}}>
+                <span style={{fontSize:28,opacity:0.3}}>◎</span>
+              </div>
+            )}
+
+            <div style={{padding:"12px 14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                <div style={{fontSize:13,fontWeight:500,color:"var(--text-primary)",lineHeight:1.3,flex:1}}>{c.title}</div>
+                <button onClick={e=>{e.stopPropagation();toggleFav(c.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:c.favorite?"#f0a090":"var(--text-muted)",marginLeft:6,padding:0,lineHeight:1}}>
+                  {c.favorite?"♥":"♡"}
+                </button>
+              </div>
+              <div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.5,marginBottom:8,fontStyle:"italic",
+                overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+                {c.description}
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {c.mood&&<Tag label={c.mood} color={MOOD_COLORS[c.mood]||"#c9b99a"} size={10}/>}
+                {c.timeOfDay&&<Tag label={c.timeOfDay} color="var(--text-muted)" size={10}/>}
+                {c.cinematicUse&&<Tag label={c.cinematicUse} color="#a0b8c8" size={10}/>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const getSuggestedShotsForMood = (mood) => {
+  const suggestions = {
+    motivated: {
+      morning: [{ id: 1, shot: "alarm clock setup", loc: "bedroom", mood: "motivated", light: "natural", angle: "close-up", props: "phone/clock" }],
+      afternoon: [{ id: 2, shot: "gym workout action footage", loc: "gym", mood: "motivated", light: "fluorescent", angle: "tracking", props: "water bottle" }],
+      evening: [{ id: 3, shot: "reviewing goals / calendar plan", loc: "desk", mood: "motivated", light: "warm lamp", angle: "slow pan", props: "notebook" }]
+    },
+    soft: {
+      morning: [{ id: 1, shot: "coffee steam rising close-up", loc: "kitchen", mood: "soft", light: "soft window", angle: "static", props: "mug" }],
+      afternoon: [{ id: 2, shot: "reading or typing journal details", loc: "living room", mood: "soft", light: "natural", angle: "over-the-shoulder", props: "book/pen" }],
+      evening: [{ id: 3, shot: "dimming lights, cozy setup", loc: "bedroom", mood: "soft", light: "warm lamp", angle: "slow pan", props: "candle" }]
+    },
+    cinematic: {
+      morning: [{ id: 1, shot: "sunlight breaking through blinds", loc: "bedroom", mood: "cinematic", light: "golden hour", angle: "slow pan", props: "blinds" }],
+      afternoon: [{ id: 2, shot: "walking along quiet street side profile", loc: "street", mood: "cinematic", light: "overcast", angle: "handheld", props: "camera bag" }],
+      evening: [{ id: 3, shot: "city lights blur tracking", loc: "balcony", mood: "cinematic", light: "blue hour", angle: "slow-mo", props: "" }]
+    },
+    default: {
+      morning: [{ id: 1, shot: "morning light overview", loc: "room", mood: "soft", light: "natural", angle: "wide", props: "" }],
+      afternoon: [{ id: 2, shot: "details of creative work / typing", loc: "desk", mood: "cinematic", light: "natural", angle: "close-up", props: "notebook" }],
+      evening: [{ id: 3, shot: "wrapping up the day / reading", loc: "room", mood: "reflective", light: "warm lamp", angle: "static", props: "" }]
+    }
+  };
+  return suggestions[mood] || suggestions.default;
+};
+
+// ── MAIN APP ───────────────────────────────────────────────────────────────────
+export default function App(){
+  const [tab,      setTabRaw]    = useState(()=>load(STORAGE.tab,"planner"));
+  const [posts,    setPosts]     = useState(()=>load(STORAGE.posts,  SEED_POSTS));
+  const [dumps,    setDumps]     = useState(()=>load(STORAGE.dumps,  SEED_DUMPS));
+  const [shoots,   setShoots]    = useState(()=>load(STORAGE.shoots, SEED_SHOOTS));
+  const [vault,    setVaultRaw]  = useState(()=>load(STORAGE.vault,  SEED_VAULT));
+  const [journal,  setJournal]   = useState(()=>load(STORAGE.journal, SEED_JOURNAL));
+  const [collabs,  setCollabs]   = useState(()=>load(STORAGE.collabs, SEED_COLLABS));
+  const [theme,    setThemeRaw]  = useState(()=>load(STORAGE.theme,"light"));
+  const [activeNiche, setActiveNiche] = useState(()=>load(STORAGE.niche, NICHES[0].id));
+  
+  const [shootFilter,setShootFilter] = useState(()=>load(STORAGE.shootFilter,"upcoming"));
+  const [vaultSearchQuery, setVaultSearchQuery] = useState("");
+
+  const setTab   = v => { setTabRaw(v);   save(STORAGE.tab,v); };
+  const setVault = fn => setVaultRaw(prev=>{ const next=typeof fn==="function"?fn(prev):fn; save(STORAGE.vault,next); return next; });
+  const setTheme = v => { setThemeRaw(v); save(STORAGE.theme, v); };
+
+  useEffect(()=>{ save(STORAGE.posts,  posts);  },[posts]);
+  useEffect(()=>{ save(STORAGE.dumps,  dumps);  },[dumps]);
+  useEffect(()=>{ save(STORAGE.shoots, shoots); },[shoots]);
+  useEffect(()=>{ save(STORAGE.shootFilter,shootFilter); },[shootFilter]);
+  useEffect(()=>{ save(STORAGE.journal, journal); },[journal]);
+  useEffect(()=>{ save(STORAGE.collabs, collabs); },[collabs]);
+  useEffect(()=>{ save(STORAGE.niche, activeNiche); },[activeNiche]);
+
+  useEffect(()=>{
+    document.documentElement.setAttribute("data-theme", theme);
+  },[theme]);
+
+  const [quote,    setQuote]     = useState(MICROCOPY[0]);
+  const [calMonth, setCalMonth]  = useState(getNow().getMonth());
+  const [calYear,  setCalYear]   = useState(getNow().getFullYear());
+  const [calFade,  setCalFade]   = useState(false);
+  const calAnimRef = useRef(false);
+
+  const [selectedPost,    setSelectedPost]    = useState(null);
+  const [selectedShootId, setSelectedShootId] = useState(null);
+  const [activeDumpId,    setActiveDumpId]    = useState(()=>load(STORAGE.dumps,SEED_DUMPS)[0]?.id||null);
+  const [newDumpTitle,    setNewDumpTitle]     = useState("");
+  const [editingDump,     setEditingDump]      = useState(false);
+  const [shootSlot,       setShootSlot]        = useState("morning");
+  const [newShot,         setNewShot]          = useState({shot:"",loc:"",mood:"cinematic",light:"",angle:"",props:""});
+
+  // Growth Journal State
+  const [selectedJournalId, setSelectedJournalId] = useState(null);
+  const [newJournal, setNewJournal] = useState({ weekStart: todayStr, followers: "", posts: "", reach: "", saves: "", engagement: "", mood: "inspired", wins: "", lessons: "", reflection: "", notes: "" });
+  const [addingJournal, setAddingJournal] = useState(false);
+
+  // Collabs State
+  const [selectedCollabId, setSelectedCollabId] = useState(null);
+  const [addingCollab, setAddingCollab] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [newCollab, setNewCollab] = useState({ brand:"", contactName:"", email:"", platform:"Instagram", status:"dream brand", quote:"", negotiatedAmount:"", deliverables:[], dueDate:"", paymentStatus:"unpaid", notes:"", pitchDraft:"", followUpDraft:"", scriptText:"", wardrobe:"", props:"", briefFileName:"", briefFileUrl:"" });
+  const [activePitchTemplate, setActivePitchTemplate] = useState("outreach");
+  const [newDeliverableText, setNewDeliverableText] = useState("");
+  const [formDeliverables, setFormDeliverables] = useState([]);
+
+  useEffect(() => {
+    if (addingCollab) {
+      const rates = calculateCollabRates(formDeliverables);
+      setNewCollab(prev => ({
+        ...prev,
+        quote: rates.total,
+        negotiatedAmount: rates.total
+      }));
+    }
+  }, [formDeliverables, addingCollab]);
+
+  // AI Trend Scout State
+  const [scouting, setScouting] = useState(false);
+  const [scoutProgress, setScoutProgress] = useState(0);
+  const [scoutLogs, setScoutLogs] = useState([]);
+  const [aiTrends, setAiTrends] = useState(() => MOCK_TRENDS_DATA[activeNiche] || []);
+  const [aiChatQuery, setAiChatQuery] = useState("");
+  const [aiChatResponses, setAiChatResponses] = useState([
+    {sender:"assistant",text:"Hello creator. I am your Second Brain assistant. Choose a niche above and run the 'AI Trend Scout' to scan real-time platforms, or ask me for hooks, captions, or structure support."}
+  ]);
+
+  // Fake AI States for Demo
+  const [aiGeneratingPitch, setAiGeneratingPitch] = useState(false);
+  const [aiGeneratingJournal, setAiGeneratingJournal] = useState(false);
+  const [aiGeneratingTags, setAiGeneratingTags] = useState(false);
+  const [aiGeneratingPostIdeas, setAiGeneratingPostIdeas] = useState(false);
+  const [discoveringBrands, setDiscoveringBrands] = useState(false);
+  const [pitchUrl, setPitchUrl] = useState("");
+  const [reelUrl, setReelUrl] = useState("");
+  const [analyzingReel, setAnalyzingReel] = useState(false);
+  const [reelBreakdown, setReelBreakdown] = useState(null);
+
+  const generatePostIdeasAI = () => {
+    if (!selectedPost) return;
+    setAiGeneratingPostIdeas(true);
+    setTimeout(() => {
+      updatePost(selectedPost.id, {
+        caption: "✨ Thumbnail Idea: Split screen showing 'before' (messy) and 'after' (aesthetic) with text overlay 'The Reset'.\n\n✨ Hooks:\n1. 'If your life feels chaotic, do this 1-hour reset...'\n2. 'Stop scrolling. It's time for a Sunday reset.'\n3. 'The only productivity hack you actually need.'\n\n" + (selectedPost.caption || "")
+      });
+      setAiGeneratingPostIdeas(false);
+    }, 1500);
+  };
+
+  const analyzeReelAI = () => {
+    if (!reelUrl.trim()) return;
+    setAnalyzingReel(true);
+    setTimeout(() => {
+      setReelBreakdown({
+        insights: ["Retention spike at 0:03 due to sudden lighting change.", "Audio is pitched up +4 semitones to avoid copyright and increase energy.", "Fast 0.5s cuts for the first 2 seconds."],
+        steps: ["1. Shoot a 3-second wide shot establishing the space.", "2. Shoot 4 quick close-ups of the subject.", "3. Overlay text: 'Wait for it...' at 0:01.", "4. Sync the beat drop with the lighting change."]
+      });
+      setAnalyzingReel(false);
+    }, 2000);
+  };
+
+  const saveBreakdownToDump = () => {
+    if (!reelBreakdown) return;
+    const nicheObj = NICHES.find(n => n.id === activeNiche);
+    const nd = {
+      id: Date.now(),
+      title: `Reel Idea: ${nicheObj ? nicheObj.label : "General"}`,
+      text: `--- INSIGHTS ---\n${reelBreakdown.insights.map(i => `• ${i}`).join('\n')}\n\n--- RECREATION GUIDE ---\n${reelBreakdown.steps.map(s => `• ${s}`).join('\n')}`,
+      mood: "cinematic",
+      ts: "just now",
+      archived: false
+    };
+    setDumps(ds => [nd, ...ds]);
+    setActiveDumpId(nd.id);
+    setTab("dump");
+  };
+
+  const saveBreakdownToPlanner = () => {
+    if (!reelBreakdown) return;
+    const nicheObj = NICHES.find(n => n.id === activeNiche);
+    const np = {
+      id: Date.now(),
+      date: todayStr,
+      title: `Reel Breakdown Idea - ${nicheObj ? nicheObj.label : "Reel"}`,
+      type: "reel",
+      status: "draft",
+      mood: "cinematic",
+      caption: `--- INSIGHTS ---\n${reelBreakdown.insights.map(i => `• ${i}`).join('\n')}\n\n--- RECREATION GUIDE ---\n${reelBreakdown.steps.map(s => `• ${s}`).join('\n')}`,
+      hashtags: "",
+      shootId: null
+    };
+    setPosts(ps => [...ps, np]);
+    setSelectedPost(np);
+    setTab("planner");
+  };
+
+  const saveBreakdownToShoot = () => {
+    if (!reelBreakdown) return;
+    const nicheObj = NICHES.find(n => n.id === activeNiche);
+    const morningShots = [];
+    const afternoonShots = [];
+    const eveningShots = [];
+    reelBreakdown.steps.forEach((step, idx) => {
+      const shotObj = {
+        id: Date.now() + idx,
+        shot: step.replace(/^\d+\.\s*/, ""),
+        loc: "Studio",
+        mood: "cinematic",
+        light: "natural",
+        angle: "medium",
+        props: ""
+      };
+      if (idx === 0) morningShots.push(shotObj);
+      else if (idx === 1) afternoonShots.push(shotObj);
+      else eveningShots.push(shotObj);
+    });
+    const ns = {
+      id: Date.now(),
+      name: `Reel Breakdown Shoot - ${nicheObj ? nicheObj.label : "Session"}`,
+      shootDate: todayStr,
+      postId: null,
+      slots: {
+        morning: morningShots,
+        afternoon: afternoonShots,
+        evening: eveningShots
+      }
+    };
+    setShoots(ss => [...ss, ns]);
+    setSelectedShootId(ns.id);
+    setTab("shoot");
+  };
+
+  const discoverBrandsAI = () => {
+    setDiscoveringBrands(true);
+    setTimeout(() => {
+      let mockLeads = [];
+      if (activeNiche === "minimalist-productivity") {
+        mockLeads = [
+          {
+            id: Date.now(),
+            brand: "FocusFlow Timers",
+            contactName: "Alex Rivera",
+            email: "collabs@focusflow.io",
+            platform: "Instagram",
+            status: "dream brand",
+            quote: "400",
+            negotiatedAmount: "400",
+            deliverables: [{ id: Date.now() + 1, text: "1x Reel showing desk productivity routine", type: "reel", completed: false }],
+            dueDate: "",
+            paymentStatus: "unpaid",
+            notes: "Discovered via AI based on your minimalist productivity niche. Brand matches your desk aesthetic.",
+            pitchDraft: "",
+            followUpDraft: "",
+            createdAt: todayStr
+          },
+          {
+            id: Date.now() + 2,
+            brand: "Mono Journals",
+            contactName: "Clara Tanaka",
+            email: "partners@monojournals.com",
+            platform: "Instagram",
+            status: "dream brand",
+            quote: "300",
+            negotiatedAmount: "300",
+            deliverables: [{ id: Date.now() + 3, text: "1x Carousel detailing planning systems", type: "carousel", completed: false }],
+            dueDate: "",
+            paymentStatus: "unpaid",
+            notes: "AI discovered: High-quality minimalist notebook brand looking for creators focused on systems.",
+            pitchDraft: "",
+            followUpDraft: "",
+            createdAt: todayStr
+          }
+        ];
+      } else if (activeNiche === "aesthetic-lifestyle") {
+        mockLeads = [
+          {
+            id: Date.now(),
+            brand: "Norse Linen Co.",
+            contactName: "Freja Bak",
+            email: "pr@norselinen.co",
+            platform: "Instagram",
+            status: "dream brand",
+            quote: "500",
+            negotiatedAmount: "500",
+            deliverables: [{ id: Date.now() + 1, text: "1x Reel morning routine showcase", type: "reel", completed: false }],
+            dueDate: "",
+            paymentStatus: "unpaid",
+            notes: "AI match: Aesthetic neutral tone linens. High alignment with your coffee steam / morning light B-roll style.",
+            pitchDraft: "",
+            followUpDraft: "",
+            createdAt: todayStr
+          },
+          {
+            id: Date.now() + 2,
+            brand: "Melt & Mist Candles",
+            contactName: "Julian Vance",
+            email: "hello@meltandmist.com",
+            platform: "Instagram",
+            status: "dream brand",
+            quote: "250",
+            negotiatedAmount: "250",
+            deliverables: [{ id: Date.now() + 3, text: "2x Stories with aesthetic unboxing", type: "story", completed: false }],
+            dueDate: "",
+            paymentStatus: "unpaid",
+            notes: "AI match: Artisanal slow-living candle brand. Perfect match for cozy evening aesthetics.",
+            pitchDraft: "",
+            followUpDraft: "",
+            createdAt: todayStr
+          }
+        ];
+      } else {
+        mockLeads = [
+          {
+            id: Date.now(),
+            brand: "StackDev Keyboards",
+            contactName: "Toby Mercer",
+            email: "collabs@stackdev.io",
+            platform: "Instagram",
+            status: "dream brand",
+            quote: "600",
+            negotiatedAmount: "600",
+            deliverables: [{ id: Date.now() + 1, text: "1x Reel building desk setup integration", type: "reel", completed: false }],
+            dueDate: "",
+            paymentStatus: "unpaid",
+            notes: "AI match: Premium mechanical keyboard builder. Highly matching build-in-public process.",
+            pitchDraft: "",
+            followUpDraft: "",
+            createdAt: todayStr
+          },
+          {
+            id: Date.now() + 2,
+            brand: "GlassNote SaaS",
+            contactName: "Evelyn Ross",
+            email: "growth@glassnote.app",
+            platform: "Instagram",
+            status: "dream brand",
+            quote: "450",
+            negotiatedAmount: "450",
+            deliverables: [{ id: Date.now() + 3, text: "1x Reel code/work loop review", type: "reel", completed: false }],
+            dueDate: "",
+            paymentStatus: "unpaid",
+            notes: "AI match: Glassmorphic productivity editor tool. Fits the 'tired but motivated' mindset of your digital builder page.",
+            pitchDraft: "",
+            followUpDraft: "",
+            createdAt: todayStr
+          }
+        ];
+      }
+
+      setCollabs(prev => [...mockLeads, ...prev]);
+      setDiscoveringBrands(false);
+      setSelectedCollabId(mockLeads[0].id);
+    }, 1500);
+  };
+
+  const generatePitchAI = () => {
+    setAiGeneratingPitch(true);
+    setTimeout(() => {
+      const activeCollab = collabs.find(x => x.id === selectedCollabId) || null;
+      const brandName = addingCollab ? newCollab.brand : (activeCollab ? activeCollab.brand : "Aesthetic Desk Co.");
+      const platformName = addingCollab ? newCollab.platform : (activeCollab ? activeCollab.platform : "Instagram");
+      const contactPerson = addingCollab ? newCollab.contactName : (activeCollab ? activeCollab.contactName : "Team");
+      const rateVal = addingCollab ? (newCollab.negotiatedAmount || newCollab.quote || "500") : (activeCollab ? (activeCollab.negotiatedAmount || activeCollab.quote || "500") : "500");
+
+      const generatedDraft = `Hi ${contactPerson || "Team"} at ${brandName},\n\nI've been analyzing your recent campaigns on ${platformName || "Instagram"} via ${pitchUrl || "profile"}.\n\nHere is a concept that fits your aesthetic perfectly:\n- A high-retention cinematic showcase showing a slow lifestyle routine.\n- Captivating overlays highlighting your product benefits in natural lighting.\n\nI'd love to partner and produce this for you. Standard rate for this package is ₹${rateVal}.\n\nLet me know if you'd like to see the draft script!\n\nWarmly,\nMe`;
+
+      if (addingCollab) {
+        setNewCollab(prev => ({
+          ...prev,
+          pitchDraft: generatedDraft
+        }));
+      } else if (selectedCollabId) {
+        setCollabs(prev => prev.map(item => {
+          if (item.id === selectedCollabId) {
+            return { ...item, pitchDraft: generatedDraft };
+          }
+          return item;
+        }));
+      }
+      setActivePitchTemplate("aiDraft");
+      setAiGeneratingPitch(false);
+    }, 1500);
+  };
+
+  const generateJournalAI = () => {
+    setAiGeneratingJournal(true);
+    setTimeout(() => {
+      setNewJournal(prev => ({...prev, reflection: "AI Analysis: Your reach spiked by 15% due to the faster pacing in the first 3 seconds. The chaotic mood correlates with higher engagement.", wins: "Algorithm favored the raw edits", lessons: "Consistency > Perfection"}));
+      setAiGeneratingJournal(false);
+    }, 1500);
+  };
+  const generateTagsAI = (id) => {
+    setAiGeneratingTags(true);
+    setTimeout(() => {
+      updateDump(id, {title: "✨ AI: Cinematic Morning Vlog"});
+      setAiGeneratingTags(false);
+    }, 1500);
+  };
+
+  useEffect(()=>{
+    const t=setInterval(()=>setQuote(q=>{const i=(MICROCOPY.indexOf(q)+1)%MICROCOPY.length;return MICROCOPY[i];}),5000);
+    return()=>clearInterval(t);
+  },[]);
+  useEffect(()=>{ if(selectedPost){const f=posts.find(p=>p.id===selectedPost.id);if(!f)setSelectedPost(null);} },[posts]);
+
+  // Sync Niche Trends when niche selection changes
+  useEffect(()=>{
+    setAiTrends(MOCK_TRENDS_DATA[activeNiche] || []);
+  },[activeNiche]);
+
+  const navigateCal = useCallback(dir=>{
+    if(calAnimRef.current) return; calAnimRef.current=true; setCalFade(true);
+    setTimeout(()=>{
+      if(dir==="prev"){const[y,m]=prevMonth(calYear,calMonth);setCalYear(y);setCalMonth(m);}
+      if(dir==="next"){const[y,m]=nextMonth(calYear,calMonth);setCalYear(y);setCalMonth(m);}
+      if(dir==="today"){setCalYear(getNow().getFullYear());setCalMonth(getNow().getMonth());}
+      setCalFade(false); calAnimRef.current=false;
+    },150);
+  },[calYear,calMonth]);
+
+  const calFirst=new Date(calYear,calMonth,1).getDay();
+  const calTotal=new Date(calYear,calMonth+1,0).getDate();
+  const cells=Array(calFirst+calTotal).fill(null).map((_,i)=>i<calFirst?null:i-calFirst+1);
+  const todayInView=calYear===getNow().getFullYear()&&calMonth===getNow().getMonth();
+  const postsOnDay=d=>{ if(!d)return[]; const ds=toDateStr(new Date(calYear,calMonth,d)); return posts.filter(p=>p.status!=="archived"&&p.date===ds); };
+
+  const updatePost=(id,patch)=>{setPosts(ps=>ps.map(p=>p.id===id?{...p,...patch}:p));setSelectedPost(prev=>prev?.id===id?{...prev,...patch}:prev);};
+  const deletePost=id=>{setPosts(ps=>ps.filter(p=>p.id!==id));setSelectedPost(null);};
+
+  const activeDump=dumps.find(d=>d.id===activeDumpId)||null;
+  const updateDump=(id,patch)=>setDumps(ds=>ds.map(d=>d.id===id?{...d,...patch}:d));
+  const deleteDump=id=>{setDumps(ds=>ds.filter(d=>d.id!==id));setActiveDumpId(dumps.find(d=>d.id!==id&&!d.archived)?.id||null);};
+
+  const getDeliverablesArray = (collab) => {
+    if (!collab) return [];
+    let list = [];
+    if (Array.isArray(collab.deliverables)) {
+      list = collab.deliverables;
+    } else if (typeof collab.deliverables === "string") {
+      list = collab.deliverables.split("\n").filter(Boolean).map((line, idx) => ({
+        id: collab.id * 100 + idx,
+        text: line.trim(),
+        postId: null,
+        shootId: null,
+        completed: false
+      }));
+    }
+    
+    return list.map(d => {
+      if (d.type) return d;
+      let type = "custom";
+      const textLower = (d.text || "").toLowerCase();
+      if (textLower.includes("reel")) type = "reel";
+      else if (textLower.includes("story") || textLower.includes("stories")) type = "story";
+      else if (textLower.includes("carousel")) type = "carousel";
+      else if (textLower.includes("photo") || textLower.includes("post")) type = "photo";
+      return { ...d, type };
+    });
+  };
+
+  const toggleDeliverableCompleted = (collabId, delId) => {
+    setCollabs(prev => prev.map(c => {
+      if (c.id !== collabId) return c;
+      const parsed = getDeliverablesArray(c);
+      const updated = parsed.map(d => d.id === delId ? { ...d, completed: !d.completed } : d);
+      return { ...c, deliverables: updated };
+    }));
+  };
+
+  const linkPostToDeliverable = (collabId, delId, postId) => {
+    setCollabs(prev => prev.map(c => {
+      if (c.id !== collabId) return c;
+      const parsed = getDeliverablesArray(c);
+      const updated = parsed.map(d => d.id === delId ? { ...d, postId: postId || null } : d);
+      return { ...c, deliverables: updated };
+    }));
+  };
+
+  const linkShootToDeliverable = (collabId, delId, shootId) => {
+    setCollabs(prev => prev.map(c => {
+      if (c.id !== collabId) return c;
+      const parsed = getDeliverablesArray(c);
+      const updated = parsed.map(d => d.id === delId ? { ...d, shootId: shootId || null } : d);
+      return { ...c, deliverables: updated };
+    }));
+  };
+
+  const createPostForDeliverable = (collabId, delId, text) => {
+    const np = {
+      id: Date.now(),
+      date: todayStr,
+      title: text || "collab post",
+      type: "reel",
+      status: "draft",
+      mood: "soft",
+      caption: `Collaborating with ${collabs.find(c=>c.id===collabId)?.brand || "brand"}.`,
+      hashtags: "",
+      shootId: null
+    };
+    setPosts(ps => [...ps, np]);
+    linkPostToDeliverable(collabId, delId, np.id);
+  };
+
+  const createShootForDeliverable = (collabId, delId, text) => {
+    const ns = {
+      id: Date.now(),
+      name: (text || "collab shoot") + " Session",
+      shootDate: todayStr,
+      postId: null,
+      slots: getSuggestedShotsForMood("default")
+    };
+    setShoots(ss => [...ss, ns]);
+    linkShootToDeliverable(collabId, delId, ns.id);
+  };
+
+  const addDeliverableToCollab = (collabId) => {
+    if (!newDeliverableText.trim()) return;
+    setCollabs(prev => prev.map(c => {
+      if (c.id !== collabId) return c;
+      const parsed = getDeliverablesArray(c);
+      const updated = [...parsed, {
+        id: Date.now(),
+        text: newDeliverableText.trim(),
+        postId: null,
+        shootId: null,
+        completed: false
+      }];
+      // Calculate rates for the updated list and update quote/negotiated amount
+      const rates = calculateCollabRates(updated);
+      return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
+    }));
+    setNewDeliverableText("");
+  };
+
+  const adjustCollabDeliverable = (collabId, type, increment) => {
+    setCollabs(prev => prev.map(c => {
+      if (c.id !== collabId) return c;
+      const parsed = getDeliverablesArray(c);
+      if (increment > 0) {
+        const existingCount = parsed.filter(d => d.type === type).length;
+        const typeLabel = type === "reel" ? "Reel" : type === "story" ? "Story" : type === "carousel" ? "Carousel" : "Photo";
+        const newDel = {
+          id: Date.now() + Math.random(),
+          text: `1x ${typeLabel} #${existingCount + 1}`,
+          type,
+          postId: null,
+          shootId: null,
+          completed: false
+        };
+        const updated = [...parsed, newDel];
+        const rates = calculateCollabRates(updated);
+        return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
+      } else {
+        const typeItems = parsed.filter(d => d.type === type);
+        if (typeItems.length === 0) return c;
+        const lastItem = typeItems[typeItems.length - 1];
+        const updated = parsed.filter(d => d.id !== lastItem.id);
+        const rates = calculateCollabRates(updated);
+        return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
+      }
+    }));
+  };
+
+  const deleteDeliverableFromCollab = (collabId, delId) => {
+    setCollabs(prev => prev.map(c => {
+      if (c.id !== collabId) return c;
+      const parsed = getDeliverablesArray(c);
+      const updated = parsed.filter(d => d.id !== delId);
+      const rates = calculateCollabRates(updated);
+      return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
+    }));
+  };
+  
+  const moveDumpToPlanner=dump=>{
+    const np={id:Date.now(),date:todayStr,title:dump.title||"untitled post",type:"reel",status:"draft",mood:dump.mood,caption:dump.text,hashtags:"",shootId:null};
+    setPosts(ps=>[...ps,np]);
+    setSelectedPost(np);
+    setTab("planner");
+  };
+  const moveDumpToShoot=dump=>{
+    const ns={id:Date.now(),name:dump.title||"new shoot session",shootDate:todayStr,postId:null,slots:getSuggestedShotsForMood(dump.mood)};
+    setShoots(ss=>[...ss,ns]);
+    setSelectedShootId(ns.id);
+    setTab("shoot");
+  };
+
+  const selectedShoot=shoots.find(s=>s.id===selectedShootId)||null;
+  const updateShoot=(id,patch)=>setShoots(ss=>ss.map(s=>s.id===id?{...s,...patch}:s));
+  const deleteShoot=id=>{setShoots(ss=>ss.filter(s=>s.id!==id));setSelectedShootId(null);};
+  const filteredShoots=shoots.filter(s=>{
+    if(!s.shootDate)return shootFilter==="upcoming";
+    if(shootFilter==="upcoming")return isUpcoming(s.shootDate);
+    if(shootFilter==="week")return isThisWeek(s.shootDate);
+    if(shootFilter==="month")return isThisMonth(s.shootDate);
+    return true;
+  }).sort((a,b)=>{const da=fromDateStr(a.shootDate),db=fromDateStr(b.shootDate);if(!da&&!db)return 0;if(!da)return 1;if(!db)return-1;return da-db;});
+  
+  const shootDateLabel=s=>{if(!s.shootDate)return"no date set";if(isToday(s.shootDate))return"today ✦";if(isThisWeek(s.shootDate))return"this week · "+friendlyDate(s.shootDate);return friendlyDate(s.shootDate);};
+  const addShotToShoot=()=>{if(!newShot.shot.trim()||!selectedShootId)return;setShoots(ss=>ss.map(s=>{if(s.id!==selectedShootId)return s;return{...s,slots:{...s.slots,[shootSlot]:[...s.slots[shootSlot],{...newShot,id:Date.now()}]}};}));setNewShot({shot:"",loc:"",mood:"cinematic",light:"",angle:"",props:"",});};
+  const removeShotFromShoot=(slot,shotId)=>setShoots(ss=>ss.map(s=>{if(s.id!==selectedShootId)return s;return{...s,slots:{...s.slots,[slot]:s.slots[slot].filter(x=>x.id!==shotId)}};}));
+
+  // AI Trend Scout Trigger Simulation
+  const runAiScout = () => {
+    setScouting(true);
+    setScoutProgress(5);
+    setScoutLogs(["Connecting to Meta Graph API...", "Authenticating Instagram Token..."]);
+    
+    const logs = [
+      "Querying #productivity reels with >100k views...",
+      "Scouting sound files with ascending momentum...",
+      "Evaluating visual frame-retention indexes...",
+      "Simulating AI emotional sentiment filters...",
+      "Trend database compilation complete!"
+    ];
+
+    let currentStep = 0;
+    const interval = setInterval(() => {
+      currentStep++;
+      if (currentStep <= logs.length) {
+        setScoutProgress(prev => Math.min(prev + 18, 95));
+        setScoutLogs(prev => [...prev, logs[currentStep - 1]]);
+      } else {
+        clearInterval(interval);
+        setScoutProgress(100);
+        setTimeout(() => {
+          setScouting(false);
+          // Highlight trending data
+          setAiTrends(MOCK_TRENDS_DATA[activeNiche] || []);
+        }, 600);
+      }
+    }, 600);
+  };
+
+  // AI Chat Helper response logic
+  const sendAiChat = () => {
+    if (!aiChatQuery.trim()) return;
+    const userMsg = { sender: "user", text: aiChatQuery };
+    setAiChatResponses(prev => [...prev, userMsg]);
+    setAiChatQuery("");
+
+    setTimeout(() => {
+      let replyText = "";
+      const q = aiChatQuery.toLowerCase();
+      if (q.includes("hook") || q.includes("title")) {
+        replyText = "Here are 3 scroll-stopping hook structures for your niche:\n\n1. 'Unfortunately, if you spend too much time with me, I'll brainwash you into...' (Value proposition)\n2. 'Here’s the exact moment everything shifted for me...' (Realization check)\n3. 'You're so creative!' -> Cut to chaotic process footage (Unpolished transparency)";
+      } else if (q.includes("music") || q.includes("audio") || q.includes("song")) {
+        replyText = "The top trending tracks right now are:\n\n• 'EVERYTHING HALLELUJAH' (Justin Bieber) - Punctuated list beats.\n• 'Be Like a Woman' (Chris Rainbow) - Aesthetic montage sound.\n• 'Bleeding Love' (Leona Lewis Lip-sync) - Confessional relatable clip.";
+      } else {
+        replyText = "Based on current viral trends, I suggest filming slow static clips at golden hour. Mute background noise, add soft acoustic audio, and use a confessional caption starting with: 'Documenting the ordinary moments...'";
+      }
+      setAiChatResponses(prev => [...prev, { sender: "assistant", text: replyText }]);
+    }, 700);
+  };
+
+  const S={
+    card:{background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)",padding:"20px",marginBottom:14},
+    label:{fontSize:12,color:"var(--text-muted)",letterSpacing:0.4,marginBottom:4,display:"block"},
+    input:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",boxSizing:"border-box"},
+    textarea:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",resize:"vertical",minHeight:80,boxSizing:"border-box"},
+    btn:(color="#c9b99a",sm=false)=>{
+      const isPrimary = color === "var(--accent-color)";
+      return {
+        padding: sm ? "4px 12px" : "8px 17px",
+        borderRadius: 20,
+        border: isPrimary ? "1px solid var(--border-focus)" : `1px solid ${color}`,
+        background: isPrimary ? "var(--accent-color)" : `${color}16`,
+        color: isPrimary ? "var(--bg-secondary)" : color,
+        fontSize: sm ? 11 : 12,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        transition: "all 0.18s",
+        whiteSpace: "nowrap"
+      };
+    },
+    grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12},
+    row:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"},
+    ghost:{background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"},
+  };
+
+  const TABS = [
+    ["planner","content planner"],
+    ["dump","brain dump"],
+    ["shoot","shoot planner"],
+    ["vault","b-roll vault"],
+    ["journal","growth journal"],
+    ["collabs","collabs CRM"],
+    ["trends","AI trend scout"]
+  ];
+
+  const formRates = calculateCollabRates(formDeliverables);
+  const selectedCollab = collabs.find(x => x.id === selectedCollabId) || null;
+  const selectedCollabDeliverables = selectedCollab ? getDeliverablesArray(selectedCollab) : [];
+  const selectedCollabRates = selectedCollab ? calculateCollabRates(selectedCollabDeliverables) : null;
+  const c = selectedCollab;
+  const cRates = selectedCollabRates;
+  const delList = selectedCollabDeliverables;
+
+  const collabDetailContent = addingCollab ? (
+                <div style={S.card} className="card-in">
+                    <div style={{...S.row,justifyContent:"space-between",marginBottom:14}}>
+                      <h3 style={{fontSize:16,fontWeight:500}}>Log New Partnership</h3>
+                    <button style={{...S.ghost,fontSize:18,color:"var(--text-muted)"}} onClick={()=>setAddingCollab(false)}>×</button>
+                  </div>
+
+                  <div style={S.grid2}>
+                    <div style={{marginBottom:10}}>
+                      <span style={S.label}>brand name *</span>
+                      <input value={newCollab.brand} style={S.input} onChange={e=>setNewCollab({...newCollab,brand:e.target.value})} placeholder="Aesthetic Deskpads..."/>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      <span style={S.label}>pipeline status</span>
+                      <select value={newCollab.status} style={S.input} onChange={e=>setNewCollab({...newCollab,status:e.target.value})}>
+                        <option value="dream brand">dream brand</option>
+                        <option value="reached out">reached out</option>
+                        <option value="replied">replied</option>
+                        <option value="discussing">discussing</option>
+                        <option value="booked">booked</option>
+                        <option value="completed">completed</option>
+                        <option value="ghosted 😭">ghosted 😭</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+                    <div>
+                      <span style={S.label}>contact person</span>
+                      <input value={newCollab.contactName} style={S.input} onChange={e=>setNewCollab({...newCollab,contactName:e.target.value})} placeholder="Marcus..."/>
+                    </div>
+                    <div>
+                      <span style={S.label}>email address</span>
+                      <input value={newCollab.email} style={S.input} onChange={e=>setNewCollab({...newCollab,email:e.target.value})} placeholder="partner@brand.com"/>
+                    </div>
+                    <div>
+                      <span style={S.label}>platform</span>
+                      <input value={newCollab.platform} style={S.input} onChange={e=>setNewCollab({...newCollab,platform:e.target.value})} placeholder="Instagram, YouTube..."/>
+                    </div>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:10}}>
+                    <div>
+                      <span style={S.label}>proposed rate (₹)</span>
+                      <input type="number" value={newCollab.quote} style={S.input} onChange={e=>setNewCollab({...newCollab,quote:e.target.value})} placeholder="400"/>
+                    </div>
+                    <div>
+                      <span style={S.label}>agreed rate (₹)</span>
+                      <input type="number" value={newCollab.negotiatedAmount} style={S.input} onChange={e=>setNewCollab({...newCollab,negotiatedAmount:e.target.value})} placeholder="350"/>
+                    </div>
+                    <div>
+                      <span style={S.label}>due date</span>
+                      <input type="date" value={newCollab.dueDate} style={S.input} onChange={e=>setNewCollab({...newCollab,dueDate:e.target.value})}/>
+                    </div>
+                    <div>
+                      <span style={S.label}>payment status</span>
+                      <select value={newCollab.paymentStatus} style={S.input} onChange={e=>setNewCollab({...newCollab,paymentStatus:e.target.value})}>
+                        <option value="unpaid">unpaid</option>
+                        <option value="invoice sent">invoice sent</option>
+                        <option value="paid">paid</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{...S.card, background:"var(--bg-primary)", marginBottom:14, border:"1px solid var(--border-color)"}}>
+                    <span style={S.label}>Deliverables Rates & Quantity Estimator</span>
+                    
+                    {/* Reels Counter Row */}
+                    <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid var(--border-color)"}}>
+                      <div>
+                        <span style={{fontSize:13, fontWeight:600, color:"var(--text-primary)"}}>▶ Reels</span>
+                        <span style={{fontSize:11, color:"var(--text-muted)", marginLeft:8}}>(₹500 each, 2 for ₹900)</span>
+                      </div>
+                      <div style={{display:"flex", alignItems:"center", gap:12}}>
+                        <button type="button" onClick={() => {
+                          const reels = formDeliverables.filter(d => d.type === "reel");
+                          if (reels.length > 0) {
+                            const toRemove = reels[reels.length - 1];
+                            setFormDeliverables(formDeliverables.filter(d => d.id !== toRemove.id));
+                          }
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>-</button>
+                        <span style={{fontWeight:600, minWidth:20, textAlign:"center"}}>{formRates.reels}</span>
+                        <button type="button" onClick={() => {
+                          setFormDeliverables([...formDeliverables, {
+                            id: Date.now() + Math.random(),
+                            type: "reel",
+                            text: `1x Reel #${formRates.reels + 1}`,
+                            postId: null,
+                            shootId: null,
+                            completed: false
+                          }]);
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>+</button>
+                        <span style={{minWidth:60, textAlign:"right", fontWeight:500, fontSize:13}}>₹{formRates.reelsCost}</span>
+                      </div>
+                    </div>
+
+                    {/* Stories Counter Row */}
+                    <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid var(--border-color)"}}>
+                      <div>
+                        <span style={{fontSize:13, fontWeight:600, color:"var(--text-primary)"}}>◯ Stories</span>
+                        <span style={{fontSize:11, color:"var(--text-muted)", marginLeft:8}}>(₹50 each)</span>
+                      </div>
+                      <div style={{display:"flex", alignItems:"center", gap:12}}>
+                        <button type="button" onClick={() => {
+                          const stories = formDeliverables.filter(d => d.type === "story");
+                          if (stories.length > 0) {
+                            const toRemove = stories[stories.length - 1];
+                            setFormDeliverables(formDeliverables.filter(d => d.id !== toRemove.id));
+                          }
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>-</button>
+                        <span style={{fontWeight:600, minWidth:20, textAlign:"center"}}>{formRates.stories}</span>
+                        <button type="button" onClick={() => {
+                          setFormDeliverables([...formDeliverables, {
+                            id: Date.now() + Math.random(),
+                            type: "story",
+                            text: `1x Story #${formRates.stories + 1}`,
+                            postId: null,
+                            shootId: null,
+                            completed: false
+                          }]);
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>+</button>
+                        <span style={{minWidth:60, textAlign:"right", fontWeight:500, fontSize:13}}>₹{formRates.storiesCost}</span>
+                      </div>
+                    </div>
+
+                    {/* Carousels Counter Row */}
+                    <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid var(--border-color)"}}>
+                      <div>
+                        <span style={{fontSize:13, fontWeight:600, color:"var(--text-primary)"}}>⊞ Carousels</span>
+                        <span style={{fontSize:11, color:"var(--text-muted)", marginLeft:8}}>(₹300 each)</span>
+                      </div>
+                      <div style={{display:"flex", alignItems:"center", gap:12}}>
+                        <button type="button" onClick={() => {
+                          const carousels = formDeliverables.filter(d => d.type === "carousel");
+                          if (carousels.length > 0) {
+                            const toRemove = carousels[carousels.length - 1];
+                            setFormDeliverables(formDeliverables.filter(d => d.id !== toRemove.id));
+                          }
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>-</button>
+                        <span style={{fontWeight:600, minWidth:20, textAlign:"center"}}>{formRates.carousels}</span>
+                        <button type="button" onClick={() => {
+                          setFormDeliverables([...formDeliverables, {
+                            id: Date.now() + Math.random(),
+                            type: "carousel",
+                            text: `1x Carousel #${formRates.carousels + 1}`,
+                            postId: null,
+                            shootId: null,
+                            completed: false
+                          }]);
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>+</button>
+                        <span style={{minWidth:60, textAlign:"right", fontWeight:500, fontSize:13}}>₹{formRates.carouselsCost}</span>
+                      </div>
+                    </div>
+
+                    {/* Photos Counter Row */}
+                    <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid var(--border-color)"}}>
+                      <div>
+                        <span style={{fontSize:13, fontWeight:600, color:"var(--text-primary)"}}>✎ Photo Posts</span>
+                        <span style={{fontSize:11, color:"var(--text-muted)", marginLeft:8}}>(₹200 each)</span>
+                      </div>
+                      <div style={{display:"flex", alignItems:"center", gap:12}}>
+                        <button type="button" onClick={() => {
+                          const photos = formDeliverables.filter(d => d.type === "photo");
+                          if (photos.length > 0) {
+                            const toRemove = photos[photos.length - 1];
+                            setFormDeliverables(formDeliverables.filter(d => d.id !== toRemove.id));
+                          }
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>-</button>
+                        <span style={{fontWeight:600, minWidth:20, textAlign:"center"}}>{formRates.photos}</span>
+                        <button type="button" onClick={() => {
+                          setFormDeliverables([...formDeliverables, {
+                            id: Date.now() + Math.random(),
+                            type: "photo",
+                            text: `1x Photo #${formRates.photos + 1}`,
+                            postId: null,
+                            shootId: null,
+                            completed: false
+                          }]);
+                        }} style={{padding:"2px 8px", borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-secondary)"}}>+</button>
+                        <span style={{minWidth:60, textAlign:"right", fontWeight:500, fontSize:13}}>₹{formRates.photosCost}</span>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Rate Calculations */}
+                    <div style={{marginTop:12, paddingTop:8, borderTop:"2px solid var(--border-color)", display:"flex", flexDirection:"column", gap:4, alignItems:"flex-end", fontSize:12, color:"var(--text-secondary)"}}>
+                      <div>Subtotal: <span style={{fontWeight:500}}>₹{formRates.subtotal}</span></div>
+                      {formRates.discount > 0 && (
+                        <div style={{color:"#a8c8a0"}}>Reel Bundle Discount: <span style={{fontWeight:600}}>-₹{formRates.discount}</span></div>
+                      )}
+                      <div style={{fontSize:14, fontWeight:600, color:"var(--text-primary)", marginTop:4}}>Estimated Total: ₹{formRates.total}</div>
+                    </div>
+
+                    {/* Form Deliverables details edit (for descriptions) */}
+                    {formDeliverables.length > 0 && (
+                      <div style={{marginTop:16}}>
+                        <span style={S.label}>Customize Deliverables Description:</span>
+                        <div style={{display:"grid", gap:8}}>
+                          {formDeliverables.map((fd, idx) => (
+                            <div key={fd.id} style={{display:"flex", alignItems:"center", gap:8, background:"var(--bg-secondary)", border:"1px solid var(--border-color)", padding:"8px 12px", borderRadius:10}}>
+                              <span style={{fontSize:11, color:"var(--accent-dark)", fontWeight:600, width:90}}>
+                                {fd.type === "reel" ? "▶ Reel" : fd.type === "story" ? "◯ Story" : fd.type === "carousel" ? "⊞ Carousel" : fd.type === "photo" ? "✎ Photo" : "✏ Custom"}
+                              </span>
+                              <input value={fd.text} onChange={e => {
+                                const updated = [...formDeliverables];
+                                updated[idx].text = e.target.value;
+                                setFormDeliverables(updated);
+                              }} placeholder="Deliverable details (e.g. 1x Reel showing morning)..." style={{...S.input, fontSize:12, padding:"5px 10px", flex:1}}/>
+                              <button type="button" onClick={() => setFormDeliverables(formDeliverables.filter(x => x.id !== fd.id))} style={{background:"none", border:"none", color:"#f0a090", fontSize:14, cursor:"pointer"}}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Add a custom deliverable button for flexibility */}
+                    <div style={{marginTop:12, display:"flex", gap:8}}>
+                      <button type="button" onClick={() => {
+                        setFormDeliverables([...formDeliverables, {
+                          id: Date.now() + Math.random(),
+                          type: "custom",
+                          text: "1x Custom Deliverable",
+                          price: 100,
+                          postId: null,
+                          shootId: null,
+                          completed: false
+                        }]);
+                      }} style={S.btn("var(--text-secondary)", true)}>+ Add Custom Item (₹100)</button>
+                    </div>
+                  </div>
+
+                  <div style={{...S.card, background:"var(--bg-primary)", marginBottom:14, border:"1px solid var(--border-color)"}}>
+                    <span style={S.label}>Brand Brief & Guidelines</span>
+                    
+                    <div style={{...S.grid2, marginBottom:10}}>
+                      <div>
+                        <span style={S.label}>Wardrobe / Aesthetic (What to wear)</span>
+                        <input value={newCollab.wardrobe || ""} onChange={e=>setNewCollab({...newCollab, wardrobe:e.target.value})} placeholder="e.g. earth tones, cozy knit sweater" style={S.input}/>
+                      </div>
+                      <div>
+                        <span style={S.label}>Props & Styling Details</span>
+                        <input value={newCollab.props || ""} onChange={e=>setNewCollab({...newCollab, props:e.target.value})} placeholder="e.g. ceramic mug, wooden tray" style={S.input}/>
+                      </div>
+                    </div>
+
+                    <div style={{marginBottom:10}}>
+                      <span style={S.label}>Brand Script / Key Talking Points</span>
+                      <textarea value={newCollab.scriptText || ""} onChange={e=>setNewCollab({...newCollab, scriptText:e.target.value})} placeholder="Paste brand talking points, mandatory phrases, hook scripts, or guidelines here..." style={{...S.textarea, minHeight:70}}/>
+                    </div>
+
+                    <div>
+                      <span style={S.label}>Upload Brand Brief PDF / Script File</span>
+                      <div style={{
+                        border: "1px dashed var(--border-color)",
+                        borderRadius: 10,
+                        padding: "10px",
+                        textAlign: "center",
+                        background: "var(--bg-secondary)",
+                        cursor: "pointer",
+                        position: "relative"
+                      }} onClick={() => {
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.accept = ".pdf,.docx,.doc,.txt,image/*";
+                        input.onchange = (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setNewCollab(prev => ({
+                              ...prev,
+                              briefFileName: file.name,
+                              briefFileUrl: URL.createObjectURL(file)
+                            }));
+                          }
+                        };
+                        input.click();
+                      }}>
+                        {newCollab.briefFileName ? (
+                          <div style={{fontSize:12, color:"var(--accent-dark)", fontWeight:500}}>📄 {newCollab.briefFileName} (Click to change)</div>
+                        ) : (
+                          <div style={{fontSize:11, color:"var(--text-muted)"}}>Click to upload brief or script document</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{marginBottom:14}}>
+                    <span style={S.label}>relationship notes</span>
+                    <textarea value={newCollab.notes} style={S.textarea} onChange={e=>setNewCollab({...newCollab,notes:e.target.value})} placeholder="they liked warm tones, requested clean voiceover, etc."/>
+                  </div>
+
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                    <button style={S.btn("var(--text-muted)")} onClick={()=>setAddingCollab(false)}>cancel</button>
+                    <button style={S.btn("var(--accent-color)")} onClick={()=>{
+                      const nc={...newCollab, id:Date.now(), createdAt:todayStr, quote:Number(newCollab.quote)||0, negotiatedAmount:Number(newCollab.negotiatedAmount)||0, deliverables: formDeliverables};
+                      setCollabs(prev=>[nc,...prev]);
+                      setSelectedCollabId(nc.id);
+                      setAddingCollab(false);
+                    }} disabled={!newCollab.brand.trim()}>save collab</button>
+                  </div>
+                </div>
+              ) : selectedCollab ? (
+                  <div style={S.card} className="card-in">
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",borderBottom:"1px solid var(--border-color)",paddingBottom:10,marginBottom:16}}>
+                        <div>
+                          <h3 style={{fontSize:18,fontWeight:400}}>{c.brand} Collaboration</h3>
+                          <span style={{fontSize:11,color:"var(--text-muted)"}}>{c.contactName} · {c.email}</span>
+                        </div>
+                        <Tag label={c.status} color={c.status.startsWith("ghosted")?"#f0a090":c.status==="completed"?"#a8c8a0":"#c9b99a"}/>
+                      </div>
+
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                        <div style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
+                          <span style={{fontSize:11,color:"var(--text-muted)"}}>proposed rate</span>
+                          <div style={{fontSize:16,fontWeight:500,marginTop:2}}>₹{c.quote}</div>
+                        </div>
+                        <div style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
+                          <span style={{fontSize:11,color:"var(--text-muted)"}}>negotiated rate</span>
+                          <div style={{fontSize:16,fontWeight:500,marginTop:2}}>₹{c.negotiatedAmount}</div>
+                        </div>
+                        <div style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
+                          <span style={{fontSize:11,color:"var(--text-muted)"}}>due date</span>
+                          <div style={{fontSize:14,fontWeight:500,marginTop:4}}>{c.dueDate ? friendlyDate(c.dueDate) : "no due date"}</div>
+                        </div>
+                        <div style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
+                          <span style={{fontSize:11,color:"var(--text-muted)"}}>payment</span>
+                          <div style={{fontSize:14,fontWeight:500,marginTop:4,color:c.paymentStatus==="paid"?"#a8c8a0":"#c9b99a"}}>{c.paymentStatus}</div>
+                        </div>
+                      </div>
+
+                      {/* Deliverables checklist */}
+                      <div style={{marginBottom:16}}>
+                        <span style={S.label}>deliverables tracker (linked to content & shoot planners)</span>
+                        <div style={{background:"var(--bg-primary)",border:"1px solid var(--border-color)",borderRadius:10,padding:14}}>
+                          {(() => {
+                            const delList = getDeliverablesArray(c);
+                            const cRates = calculateCollabRates(delList);
+                            
+                            return (
+                              <>
+                                {/* Quantity adjusters */}
+                                <div className="no-print" style={{marginBottom:16, paddingBottom:12, borderBottom:"1px solid var(--border-color)", display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10}}>
+                                  <div style={{display:"flex", flexDirection:"column", alignItems:"center", background:"var(--bg-secondary)", border:"1px solid var(--border-color)", padding:6, borderRadius:10}}>
+                                    <span style={{fontSize:10, color:"var(--text-muted)", textTransform:"lowercase", fontWeight:600}}>▶ Reels</span>
+                                    <div style={{display:"flex", alignItems:"center", gap:8, marginTop:4}}>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "reel", -1)}>-</button>
+                                      <span style={{fontWeight:600, fontSize:12, minWidth:12, textAlign:"center"}}>{cRates.reels}</span>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "reel", 1)}>+</button>
+                                    </div>
+                                  </div>
+                                  <div style={{display:"flex", flexDirection:"column", alignItems:"center", background:"var(--bg-secondary)", border:"1px solid var(--border-color)", padding:6, borderRadius:10}}>
+                                    <span style={{fontSize:10, color:"var(--text-muted)", textTransform:"lowercase", fontWeight:600}}>◯ Stories</span>
+                                    <div style={{display:"flex", alignItems:"center", gap:8, marginTop:4}}>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "story", -1)}>-</button>
+                                      <span style={{fontWeight:600, fontSize:12, minWidth:12, textAlign:"center"}}>{cRates.stories}</span>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "story", 1)}>+</button>
+                                    </div>
+                                  </div>
+                                  <div style={{display:"flex", flexDirection:"column", alignItems:"center", background:"var(--bg-secondary)", border:"1px solid var(--border-color)", padding:6, borderRadius:10}}>
+                                    <span style={{fontSize:10, color:"var(--text-muted)", textTransform:"lowercase", fontWeight:600}}>⊞ Carousels</span>
+                                    <div style={{display:"flex", alignItems:"center", gap:8, marginTop:4}}>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "carousel", -1)}>-</button>
+                                      <span style={{fontWeight:600, fontSize:12, minWidth:12, textAlign:"center"}}>{cRates.carousels}</span>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "carousel", 1)}>+</button>
+                                    </div>
+                                  </div>
+                                  <div style={{display:"flex", flexDirection:"column", alignItems:"center", background:"var(--bg-secondary)", border:"1px solid var(--border-color)", padding:6, borderRadius:10}}>
+                                    <span style={{fontSize:10, color:"var(--text-muted)", textTransform:"lowercase", fontWeight:600}}>✎ Photos</span>
+                                    <div style={{display:"flex", alignItems:"center", gap:8, marginTop:4}}>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "photo", -1)}>-</button>
+                                      <span style={{fontWeight:600, fontSize:12, minWidth:12, textAlign:"center"}}>{cRates.photos}</span>
+                                      <button style={{padding:"0px 6px", fontSize:11, borderRadius:4, border:"1px solid var(--border-color)", cursor:"pointer", background:"var(--bg-primary)"}} onClick={()=>adjustCollabDeliverable(c.id, "photo", 1)}>+</button>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Items checklist */}
+                                {delList.length === 0 ? (
+                                  <span style={{fontStyle:"italic",fontSize:12,color:"var(--text-muted)"}}>No deliverables logged</span>
+                                ) : (
+                                  delList.map(del => {
+                                    const linkedPost = posts.find(p => p.id === del.postId);
+                                    const linkedShoot = shoots.find(s => s.id === del.shootId);
+                                    const isCompleted = del.completed || linkedPost?.status === "posted";
+
+                                    return (
+                                      <div key={del.id} style={{
+                                        display:"flex",
+                                        alignItems:"center",
+                                        justifyContent: "space-between",
+                                        gap:12,
+                                        marginBottom:10,
+                                        paddingBottom:8,
+                                        borderBottom:"1px solid var(--bg-secondary)",
+                                        fontSize:13,
+                                        flexWrap: "wrap"
+                                      }}>
+                                        <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:"240px"}}>
+                                          <input type="checkbox" checked={isCompleted} style={{cursor:"pointer"}} onChange={() => toggleDeliverableCompleted(c.id, del.id)}/>
+                                          <span style={{
+                                            textDecoration: isCompleted ? "line-through" : "none",
+                                            color: isCompleted ? "var(--text-muted)" : "var(--text-primary)",
+                                            fontWeight: 500
+                                          }}>{del.text}</span>
+                                          <button type="button" style={{background:"none", border:"none", color:"#f0a090", fontSize:14, cursor:"pointer", marginLeft:4}} onClick={() => deleteDeliverableFromCollab(c.id, del.id)}>×</button>
+                                        </div>
+
+                                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}} className="no-print">
+                                          {/* Linked Post Badge or Link Tool */}
+                                          {linkedPost ? (
+                                            <span onClick={() => { setTab("planner"); setSelectedPost(linkedPost); }} style={{
+                                              cursor:"pointer",fontSize:11,padding:"3px 8px",borderRadius:12,
+                                              background:linkedPost.status==="posted"?"#a8c8a024":"var(--accent-light)",
+                                              color:linkedPost.status==="posted"?"#6ea87a":"var(--accent-dark)",
+                                              display:"inline-flex",alignItems:"center",gap:4
+                                            }}>
+                                              ▶ {linkedPost.title} ({linkedPost.status})
+                                            </span>
+                                          ) : (
+                                            <select style={{fontSize:11,padding:"2px 6px",borderRadius:8,background:"var(--bg-secondary)",border:"1px solid var(--border-color)",color:"var(--text-secondary)"}}
+                                              onChange={e => {
+                                                if (e.target.value === "create") {
+                                                  createPostForDeliverable(c.id, del.id, del.text);
+                                                } else if (e.target.value) {
+                                                  linkPostToDeliverable(c.id, del.id, Number(e.target.value));
+                                                }
+                                              }} value="">
+                                              <option value="">🔗 Link Post...</option>
+                                              <option value="create">+ Create Draft Post</option>
+                                              {posts.map(p => <option key={p.id} value={p.id}>{TYPE_ICONS[p.type]} {p.title}</option>)}
+                                              </select>
+                                          )}
+
+                                          {/* Linked Shoot Badge or Link Tool */}
+                                          {linkedShoot ? (
+                                            <span onClick={() => { setTab("shoot"); setSelectedShootId(linkedShoot.id); }} style={{
+                                              cursor:"pointer",fontSize:11,padding:"3px 8px",borderRadius:12,
+                                              background:"#a0b8c824",color:"#6a8ca8",
+                                              display:"inline-flex",alignItems:"center",gap:4
+                                            }}>
+                                              🎬 {linkedShoot.name.replace(" Session", "")}
+                                            </span>
+                                          ) : (
+                                            <select style={{fontSize:11,padding:"2px 6px",borderRadius:8,background:"var(--bg-secondary)",border:"1px solid var(--border-color)",color:"var(--text-secondary)"}}
+                                              onChange={e => {
+                                                if (e.target.value === "create") {
+                                                  createShootForDeliverable(c.id, del.id, del.text);
+                                                } else if (e.target.value) {
+                                                  linkShootToDeliverable(c.id, del.id, Number(e.target.value));
+                                                }
+                                              }} value="">
+                                              <option value="">🎬 Link Shoot...</option>
+                                              <option value="create">+ Create Shoot Session</option>
+                                              {shoots.map(s => <option key={s.id} value={s.id}>🎬 {s.name}</option>)}
+                                            </select>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </>
+                            );
+                          })()}
+                          {/* Add Deliverable Row */}
+                          <div style={{display:"flex",gap:8,marginTop:12}} className="no-print">
+                            <input value={newDeliverableText} onChange={e=>setNewDeliverableText(e.target.value)} placeholder="Add custom deliverable (e.g. 1x consultation)..." style={{...S.input,fontSize:12,padding:"6px 10px",flex:1}}
+                              onKeyDown={e=>{if(e.key==="Enter"){addDeliverableToCollab(c.id);}}}/>
+                            <button style={S.btn("var(--accent-color)",true)} onClick={()=>addDeliverableToCollab(c.id)}>+ Add</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Brand Guidelines Card */}
+                      <div style={S.card} className="card-in">
+                        <span style={S.label}>Brand Brief & Creative Guidelines</span>
+                        
+                        {(c.briefFileName || c.wardrobe || c.props || c.scriptText) ? (
+                          <div style={{display:"grid", gap:10, fontSize:13, marginTop:8}}>
+                            
+                            {c.briefFileName && (
+                              <div style={{background:"var(--bg-primary)", padding:"8px 12px", borderRadius:10, border:"1px solid var(--border-color)", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                                <span style={{fontWeight:500}}>📄 Attached Brief/Script:</span>
+                                <a href={c.briefFileUrl} download={c.briefFileName} style={{color:"var(--accent-dark)", textDecoration:"none", fontWeight:600}} onClick={e => e.stopPropagation()}>Download Brief</a>
+                              </div>
+                            )}
+
+                            {(c.wardrobe || c.props) && (
+                              <div style={{...S.grid2, gap:12}}>
+                                {c.wardrobe && (
+                                  <div style={{background:"var(--bg-primary)", padding:10, borderRadius:10, border:"1px solid var(--border-color)"}}>
+                                    <span style={{fontSize:11, color:"var(--text-muted)", display:"block", marginBottom:2}}>👗 Outfit / Aesthetic</span>
+                                    <span style={{fontWeight:500}}>{c.wardrobe}</span>
+                                  </div>
+                                )}
+                                {c.props && (
+                                  <div style={{background:"var(--bg-primary)", padding:10, borderRadius:10, border:"1px solid var(--border-color)"}}>
+                                    <span style={{fontSize:11, color:"var(--text-muted)", display:"block", marginBottom:2}}>📦 Props Required</span>
+                                    <span style={{fontWeight:500}}>{c.props}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {c.scriptText && (
+                              <div style={{background:"var(--bg-primary)", padding:12, borderRadius:10, border:"1px solid var(--border-color)"}}>
+                                <span style={{fontSize:11, color:"var(--text-muted)", display:"block", marginBottom:4}}>📝 Brand Script & Talking Points</span>
+                                <pre style={{fontFamily:"inherit", whiteSpace:"pre-wrap", color:"var(--text-secondary)", lineHeight:1.6}}>{c.scriptText}</pre>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{fontSize:12, fontStyle:"italic", color:"var(--text-muted)", marginTop:6}}>No brand guidelines or script logged yet.</div>
+                        )}
+                      </div>
+
+                      {/* Pitch drafting helper templates */}
+                      <div style={{marginBottom:16,borderTop:"1px solid var(--border-color)",paddingTop:14}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+                          <div style={{display:"flex", alignItems:"center", gap:8}}>
+                            <span style={S.label}>Pitch & Outreach Writer</span>
+                            <input value={pitchUrl} onChange={e=>setPitchUrl(e.target.value)} placeholder="Paste brand IG/TikTok URL..." style={{...S.input, fontSize:11, padding:"3px 8px", width:180, border:"1px solid var(--border-focus)"}}/>
+                            <button onClick={generatePitchAI} disabled={aiGeneratingPitch || !pitchUrl} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12, opacity: pitchUrl ? 1 : 0.5}}>
+                              {aiGeneratingPitch ? "✨ Analyzing brand..." : "✨ Smart Pitch"}
+                            </button>
+                          </div>
+                          <div style={S.row}>
+                            {c.pitchDraft && (
+                              <button onClick={()=>setActivePitchTemplate("aiDraft")} style={{
+                                padding:"3px 8px",borderRadius:20,fontSize:11,border:`1px solid ${activePitchTemplate==="aiDraft"?"var(--border-focus)":"var(--border-color)"}`,
+                                background:activePitchTemplate==="aiDraft"?"var(--accent-light)":"transparent",color:activePitchTemplate==="aiDraft"?"var(--text-primary)":"var(--text-muted)",cursor:"pointer"
+                              }}>✨ AI Pitch</button>
+                            )}
+                            {Object.entries(COLLAB_TEMPLATES).map(([key,t])=>(
+                              <button key={key} onClick={()=>setActivePitchTemplate(key)} style={{
+                                padding:"3px 8px",borderRadius:20,fontSize:11,border:`1px solid ${activePitchTemplate===key?"var(--border-focus)":"var(--border-color)"}`,
+                                background:activePitchTemplate===key?"var(--accent-light)":"transparent",color:activePitchTemplate===key?"var(--text-primary)":"var(--text-muted)",cursor:"pointer"
+                              }}>{t.label}</button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div style={{background:"var(--bg-primary)",border:"1px solid var(--border-color)",borderRadius:10,padding:12,position:"relative"}}>
+                          <div style={{fontSize:11,color:"var(--text-muted)",borderBottom:"1px solid var(--border-color)",paddingBottom:4,marginBottom:6,fontStyle:"italic"}}>
+                            Subject: {activePitchTemplate === "aiDraft" 
+                              ? `Collaboration Proposal: Me x ${c.brand}` 
+                              : COLLAB_TEMPLATES[activePitchTemplate] 
+                                ? COLLAB_TEMPLATES[activePitchTemplate].subject.replace("[Brand Name]", c.brand).replace("[Your Name]", "Me")
+                                : "N/A"}
+                          </div>
+                          <pre style={{fontSize:12,fontFamily:"inherit",whiteSpace:"pre-wrap",color:"var(--text-secondary)",lineHeight:1.6}}>
+                            {activePitchTemplate === "aiDraft"
+                              ? c.pitchDraft
+                              : COLLAB_TEMPLATES[activePitchTemplate]
+                                ? COLLAB_TEMPLATES[activePitchTemplate].body
+                                    .replace("[Contact Name]", c.contactName || "Team")
+                                    .replace("[Brand Name]", c.brand)
+                                    .replace("[Rate]", c.negotiatedAmount || c.quote || "500")
+                                    .replace("[Your Name]", "Me")
+                                : "No template selected"
+                            }
+                          </pre>
+                        </div>
+                      </div>
+
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14}} className="no-print">
+                        <div style={S.row}>
+                          <button style={S.btn(showInvoice?"var(--text-primary)":"var(--accent-color)",true)} onClick={()=>setShowInvoice(!showInvoice)}>
+                            {showInvoice ? "📄 Hide Invoice" : "📄 View Invoice"}
+                          </button>
+                          {showInvoice && (
+                            <button style={S.btn("var(--text-primary)",true)} onClick={()=>window.print()}>
+                              Print / Export PDF Invoice
+                            </button>
+                          )}
+                        </div>
+                        <div style={S.row}>
+                          <button style={S.btn("var(--text-muted)",true)} onClick={()=>{
+                            setCollabs(prev=>prev.map(x=>x.id===c.id ? {...x, status: "ghosted 😭"} : x));
+                          }}>Nudge (Mark Ghosted 😭)</button>
+                          <button style={S.btn("#f0a090",true)} onClick={()=>{
+                            setCollabs(prev=>prev.filter(x=>x.id!==c.id));
+                            setSelectedCollabId(null);
+                          }}>Delete reference</button>
+                        </div>
+                      </div>
+
+                      {showInvoice && (
+                        <div className="printable-invoice" style={{
+                          marginTop: 20,
+                          padding: "30px 40px",
+                          background: "var(--bg-secondary)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: 16,
+                          fontFamily: "var(--font-sans)",
+                          boxShadow: "var(--shadow-md)"
+                        }}>
+                          {/* Invoice Top Branding */}
+                          <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", borderBottom:"2px solid var(--text-primary)", paddingBottom:15, marginBottom:20}}>
+                            <div>
+                              <h2 style={{fontFamily:"var(--font-serif)", fontSize:24, margin:0, color:"var(--text-primary)"}}>SECOND BRAIN STUDIO</h2>
+                              <span style={{fontSize:11, color:"var(--text-muted)"}}>Creative Content & Storytelling</span>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <h1 style={{fontFamily:"var(--font-serif)", fontSize:28, margin:0, color:"var(--text-primary)", letterSpacing:1}}>INVOICE</h1>
+                              <span style={{fontSize:12, fontWeight:600, color:"var(--text-secondary)"}}>#INV-2026-{c.id}</span>
+                            </div>
+                          </div>
+
+                          {/* Invoice Meta Grid */}
+                          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:25, fontSize:13}}>
+                            <div>
+                              <span style={{fontSize:10, textTransform:"uppercase", color:"var(--text-muted)", display:"block", marginBottom:4, fontWeight:600}}>Billed From</span>
+                              <strong>Aesthetic Creator Studio</strong><br />
+                              creator@secondbrain.co<br />
+                              New Delhi, India
+                            </div>
+                            <div>
+                              <span style={{fontSize:10, textTransform:"uppercase", color:"var(--text-muted)", display:"block", marginBottom:4, fontWeight:600}}>Billed To</span>
+                              <strong>{c.brand}</strong><br />
+                              {c.contactName && <>{c.contactName}<br /></>}
+                              {c.email && <>{c.email}<br /></>}
+                              Platform: {c.platform}
+                            </div>
+                          </div>
+
+                          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:30, fontSize:12, background:"var(--bg-primary)", padding:12, borderRadius:10, border:"1px solid var(--border-color)"}}>
+                            <div>
+                              <strong>Date of Issue:</strong> {todayStr}
+                            </div>
+                            <div>
+                              <strong>Payment Due:</strong> {c.dueDate ? friendlyDate(c.dueDate) : "Upon Receipt"}
+                            </div>
+                          </div>
+
+                          {/* Line Items Table */}
+                          <table style={{width:"100%", borderCollapse:"collapse", fontSize:13, marginBottom:25}}>
+                            <thead>
+                              <tr style={{borderBottom:"2px solid var(--text-primary)", textAlign:"left"}}>
+                                <th style={{padding:"8px 0", fontWeight:600}}>Deliverable Description</th>
+                                <th style={{padding:"8px 0", fontWeight:600, textAlign:"center"}}>Qty</th>
+                                <th style={{padding:"8px 0", fontWeight:600, textAlign:"right"}}>Rate</th>
+                                <th style={{padding:"8px 0", fontWeight:600, textAlign:"right"}}>Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cRates.itemsBreakdown.map((item, idx) => (
+                                <tr key={idx} style={{borderBottom:"1px solid var(--border-color)"}}>
+                                  <td style={{padding:"12px 0"}}>
+                                    <div>{item.name}</div>
+                                    {item.discount > 0 && <span style={{fontSize:10, color:"#a8c8a0", fontStyle:"italic"}}>Reels pair discount applied</span>}
+                                  </td>
+                                  <td style={{padding:"12px 0", textAlign:"center"}}>{item.qty}</td>
+                                  <td style={{padding:"12px 0", textAlign:"right"}}>₹{item.rate}</td>
+                                  <td style={{padding:"12px 0", textAlign:"right"}}>
+                                    {item.discount > 0 ? (
+                                      <div>
+                                        <span style={{textDecoration:"line-through", color:"var(--text-muted)", fontSize:11, marginRight:6}}>₹{item.qty * item.rate}</span>
+                                        <span>₹{item.total}</span>
+                                      </div>
+                                    ) : (
+                                      <span>₹{item.total}</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+
+                              {/* Custom manual adjustments to match c.negotiatedAmount */}
+                              {c.negotiatedAmount !== undefined && c.negotiatedAmount !== null && c.negotiatedAmount !== "" && Number(c.negotiatedAmount) !== cRates.total && (
+                                <tr style={{borderBottom:"1px solid var(--border-color)", fontStyle:"italic", color:"var(--text-secondary)"}}>
+                                  <td style={{padding:"12px 0"}} colSpan={3}>
+                                    Negotiated Client Adjustment
+                                  </td>
+                                  <td style={{padding:"12px 0", textAlign:"right"}}>
+                                    {Number(c.negotiatedAmount) > cRates.total ? "+" : "-"}₹{Math.abs(Number(c.negotiatedAmount) - cRates.total)}
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+
+                          {/* Totals Section */}
+                          <div style={{display:"flex", justifyContent:"flex-end", fontSize:13, marginBottom:20}}>
+                            <div style={{width:240, display:"flex", flexDirection:"column", gap:6}}>
+                              <div style={{display:"flex", justifyContent:"space-between"}}>
+                                <span>Subtotal</span>
+                                <span>₹{cRates.subtotal}</span>
+                              </div>
+                              {cRates.discount > 0 && (
+                                <div style={{display:"flex", justifyContent:"space-between", color:"#a8c8a0"}}>
+                                  <span>Reels Discount</span>
+                                  <span>-₹{cRates.discount}</span>
+                                </div>
+                              )}
+                              {c.negotiatedAmount !== undefined && c.negotiatedAmount !== null && c.negotiatedAmount !== "" && Number(c.negotiatedAmount) !== cRates.total && (
+                                <div style={{display:"flex", justifyContent:"space-between", color:"var(--text-secondary)", fontStyle:"italic"}}>
+                                  <span>Brand Adjustment</span>
+                                  <span>
+                                    {Number(c.negotiatedAmount) > cRates.total ? "+" : "-"}₹{Math.abs(Number(c.negotiatedAmount) - cRates.total)}
+                                  </span>
+                                </div>
+                              )}
+                              <div style={{display:"flex", justifyContent:"space-between", borderTop:"2px solid var(--text-primary)", paddingTop:8, marginTop:4, fontSize:16, fontWeight:700, color:"var(--text-primary)"}}>
+                                <span>Total Due</span>
+                                <span>₹{c.negotiatedAmount !== undefined && c.negotiatedAmount !== "" ? c.negotiatedAmount : cRates.total}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Footer terms */}
+                          <div style={{borderTop:"1px solid var(--border-color)", paddingTop:15, marginTop:30, fontSize:11, color:"var(--text-muted)", textAlign:"center", lineHeight:1.5}}>
+                            <p style={{fontWeight:600, color:"var(--text-secondary)", marginBottom:4}}>Payment Terms & Instructions</p>
+                            <p>Please send payments via Bank Transfer or UPI details shared separately.</p>
+                            <p style={{marginTop:8, fontStyle:"italic"}}>Thank you for working with independent creators. Let's make something beautiful.</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                <div style={{textAlign:"center",padding:"80px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
+                  <div style={{fontSize:32,opacity:0.2,marginBottom:12}}>🤝</div>
+                  <p style={{fontStyle:"italic",fontSize:15,marginBottom:4}}>creative work deserves organization too</p>
+                  <p style={{fontSize:12,maxWidth:320,margin:"0 auto"}}>Keep relationships calm and rates documented. Soft systems still count as systems.</p>
+                </div>
+              );
+
+  return(
+    <div style={{background:"var(--bg-primary)",minHeight:"100vh",color:"var(--text-primary)",transition:"all 0.3s"}}>
+      <style>{`
+        button:hover { opacity: 0.78; }
+        select { appearance: none; -webkit-appearance: none; }
+        .sparkline {
+          stroke-dasharray: 1000;
+          stroke-dashoffset: 1000;
+          animation: drawSparkline 1.5s ease-out forwards;
+        }
+        @keyframes drawSparkline {
+          to { stroke-dashoffset: 0; }
+        }
+      `}</style>
+
+      {/* HEADER */}
+      <div style={{padding:"22px 28px 0",borderBottom:"1px solid var(--border-color)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+          <div>
+            <h1 style={{fontSize:22,fontWeight:400,letterSpacing:-0.5,color:"var(--text-primary)",margin:0}}>second brain ✦</h1>
+            <p style={{fontSize:12,color:"var(--text-secondary)",marginTop:3,fontStyle:"italic",margin:"3px 0 0"}}>for creators rebuilding in real time</p>
+          </div>
+          
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            {/* Theme Toggle */}
+            <button onClick={()=>setTheme(theme==="light"?"dark":"light")} style={{
+              background:"none",border:"1px solid var(--border-color)",borderRadius:30,padding:"6px 12px",
+              cursor:"pointer",fontSize:11,color:"var(--text-secondary)"
+            }}>
+              {theme==="light"?"🎬 pro edit bay":"☀️ creator studio"}
+            </button>
+            <p style={{fontSize:12,color:"var(--accent-color)",fontStyle:"italic",textAlign:"right",letterSpacing:0.3,maxWidth:220,lineHeight:1.4}}>{quote}</p>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div style={{display:"flex",gap:4,overflowX:"auto",scrollbarWidth:"none"}}>
+          {TABS.map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)} style={{
+              padding:"10px 18px",fontSize:13,cursor:"pointer",border:"none",fontFamily:"inherit",
+              borderBottom:tab===id?"2px solid var(--border-focus)":"2px solid transparent",
+              background:"transparent",color:tab===id?"var(--text-primary)":"var(--text-muted)",
+              transition:"all 0.18s",fontWeight:tab===id?500:400,whiteSpace:"nowrap",
+            }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{padding:"24px 28px"}}>
+
+        {/* 1. CONTENT PLANNER */}
+        {tab==="planner"&&(
+          <div className="card-in">
+            <div style={{...S.row,justifyContent:"space-between",marginBottom:18}}>
+              <div style={S.row}>
+                <NavBtn onClick={()=>navigateCal("prev")}>‹</NavBtn>
+                <span style={{fontSize:16,fontWeight:500,color:"var(--text-secondary)",minWidth:164,textAlign:"center"}}>{MONTHS[calMonth]} {calYear}</span>
+                <NavBtn onClick={()=>navigateCal("next")}>›</NavBtn>
+                {!todayInView&&<NavBtn onClick={()=>navigateCal("today")} active color="var(--accent-color)">today</NavBtn>}
+              </div>
+              <button style={S.btn("var(--accent-color)")} onClick={()=>{const np={id:Date.now(),date:todayStr,title:"untitled post",type:"reel",status:"draft",mood:"soft",caption:"",hashtags:"",shootId:null};setPosts(ps=>[...ps,np]);setSelectedPost(np);}}>+ new post</button>
+            </div>
+
+            <div className={calFade?"cal-grid cal-fade":"cal-grid cal-show"} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:22}}>
+              {DAYS.map(d=><div key={d} style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",paddingBottom:6,letterSpacing:0.3}}>{d}</div>)}
+              {cells.map((d,i)=>{const ds=d?toDateStr(new Date(calYear,calMonth,d)):null;const tod=ds&&isToday(ds);const dp=postsOnDay(d);return(
+                <div key={i} style={{minHeight:66,borderRadius:12,padding:"5px 6px",background:d?(tod?"var(--accent-light)":"var(--bg-secondary)"):"transparent",border:d?(tod?"1.5px solid var(--border-focus)":"1px solid var(--border-color)"):"none"}}>
+                  {d&&<><div style={{fontSize:11,color:tod?"var(--accent-color)":"var(--text-muted)",fontWeight:tod?600:400,marginBottom:3}}>{d}</div>
+                  {dp.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{fontSize:10,padding:"2px 5px",borderRadius:6,marginBottom:2,cursor:"pointer",background:MOOD_COLORS[p.mood]+"22",color:MOOD_COLORS[p.mood],overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{TYPE_ICONS[p.type]} {p.title}</div>)}</>}
+                </div>
+              );})}
+            </div>
+
+            {selectedPost&&(
+              <div style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(18, 17, 16, 0.4)",
+                backdropFilter: "blur(4px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1000,
+                padding: "20px"
+              }} onClick={() => setSelectedPost(null)}>
+                <div className="card-in" style={{
+                  ...S.card,
+                  width: "100%",
+                  maxWidth: "600px",
+                  maxHeight: "90vh",
+                  overflowY: "auto",
+                  border: "1px solid var(--border-focus)",
+                  boxShadow: "var(--shadow-lg)",
+                  margin: 0
+                }} onClick={e => e.stopPropagation()}>
+                  <div style={{...S.row,justifyContent:"space-between",marginBottom:16}}>
+                    <input value={selectedPost.title} onChange={e=>updatePost(selectedPost.id,{title:e.target.value})} style={{...S.input,fontSize:16,fontWeight:500,border:"none",background:"transparent",padding:0,flex:1}}/>
+                    <button onClick={()=>setSelectedPost(null)} style={{...S.ghost,fontSize:20,color:"var(--text-muted)"}}>×</button>
+                  </div>
+                  <div style={S.grid2}>
+                    <div><span style={S.label}>date</span><input type="date" value={selectedPost.date||""} style={S.input} onChange={e=>updatePost(selectedPost.id,{date:e.target.value})}/></div>
+                    <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=><button key={t} onClick={()=>updatePost(selectedPost.id,{type:t})} style={{...S.btn(selectedPost.type===t?"var(--accent-color)":"var(--border-color)",true),background:selectedPost.type===t?"var(--accent-light)":"transparent"}}>{TYPE_ICONS[t]} {t}</button>)}</div></div>
+                  </div>
+                  <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=><button key={st} onClick={()=>updatePost(selectedPost.id,{status:st})} style={{...S.btn(STATUS_COLORS[st],true),background:selectedPost.status===st?STATUS_COLORS[st]+"20":"transparent"}}>{st==="posted"?"released ✦":st==="archived"?"archived":st}</button>)}</div></div>
+                  <div style={{marginTop:12}}><span style={S.label}>mood</span><MoodPicker value={selectedPost.mood} onChange={m=>updatePost(selectedPost.id,{mood:m})}/></div>
+                  <div style={{marginTop:12}}><span style={S.label}>linked shoot</span>
+                    <div style={S.row}>
+                      <select value={selectedPost.shootId||""} style={{...S.input,flex:1,cursor:"pointer"}} onChange={e=>updatePost(selectedPost.id,{shootId:e.target.value?Number(e.target.value):null})}>
+                        <option value="">no shoot linked</option>
+                        {shoots.map(s=><option key={s.id} value={s.id}>{s.name}{s.shootDate?" · "+friendlyDate(s.shootDate):""}</option>)}
+                      </select>
+                      {selectedPost.shootId&&<button style={S.btn("#a0b8c8",true)} onClick={()=>{setSelectedShootId(selectedPost.shootId);setTab("shoot");setSelectedPost(null);}}>open →</button>}
+                      <button style={S.btn("#d4c5e2",true)} onClick={()=>{const ns={id:Date.now(),name:selectedPost.title+" — shoot",shootDate:selectedPost.date||todayStr,postId:selectedPost.id,slots:getSuggestedShotsForMood(selectedPost.mood)};setShoots(ss=>[...ss,ns]);updatePost(selectedPost.id,{shootId:ns.id});setSelectedShootId(ns.id);setSelectedPost(null);}}>+ create shoot</button>
+                    </div>
+                  </div>
+                  <div style={{marginTop:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={S.label}>caption & ideas</span>
+                      <button onClick={generatePostIdeasAI} disabled={aiGeneratingPostIdeas} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
+                        {aiGeneratingPostIdeas ? "✨ Generating..." : "✨ AI Thumbnails & Hooks"}
+                      </button>
+                    </div>
+                    <textarea value={selectedPost.caption} style={S.textarea} placeholder="what do you want to say..." onChange={e=>updatePost(selectedPost.id,{caption:e.target.value})}/>
+                  </div>
+                  <div style={{marginTop:10}}><span style={S.label}>hashtags</span><textarea value={selectedPost.hashtags} style={{...S.textarea,minHeight:46}} placeholder="#yourhashtags" onChange={e=>updatePost(selectedPost.id,{hashtags:e.target.value})}/></div>
+                  <div style={{...S.row,justifyContent:"flex-end",marginTop:14}}>
+                    <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(selectedPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
+                    <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(selectedPost.id)}>delete forever</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div><span style={{...S.label,marginBottom:10}}>all posts</span>
+              {["draft","scheduled","posted","archived"].map(status=>{
+                const group=posts.filter(p=>p.status===status).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+                if(!group.length)return null;
+                return(<div key={status} style={{marginBottom:18}}>
+                  <div style={{fontSize:11,color:STATUS_COLORS[status],marginBottom:7,letterSpacing:0.5}}>{status==="posted"?"released into the universe":status}</div>
+                  {group.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,opacity:status==="archived"?0.5:1}}>
+                    <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
+                    <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,color:"var(--text-primary)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{p.title}</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{isToday(p.date)?"today ✦":friendlyDate(p.date)} · {p.mood}{p.shootId?" · 🎬":""}</div></div>
+                    <Tag label={status==="posted"?"released":status} color={STATUS_COLORS[status]}/>
+                  </div>)}
+                </div>);
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 2. BRAIN DUMP */}
+        {tab==="dump"&&(
+          <div className="card-in" style={{display:"grid",gridTemplateColumns:"220px 1fr",gap:20}}>
+            <div>
+              <span style={{...S.label,marginBottom:8}}>your dumps</span>
+              {dumps.filter(d=>!d.archived).map(d=>(
+                <div key={d.id} onClick={()=>setActiveDumpId(d.id)} style={{padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:5,background:activeDumpId===d.id?"var(--bg-secondary)":"transparent",border:activeDumpId===d.id?`1px solid ${MOOD_COLORS[d.mood]||"var(--border-color)"}`:"1px solid transparent",transition:"all 0.18s"}}>
+                  <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:activeDumpId===d.id?500:400,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{d.title||"untitled"}</div>
+                  <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{d.mood} · {d.ts}</div>
+                </div>
+              ))}
+              <div style={{marginTop:8}}>
+                {editingDump?(
+                  <div style={S.row}>
+                    <input value={newDumpTitle} onChange={e=>setNewDumpTitle(e.target.value)} placeholder="title..." style={{...S.input,fontSize:12,padding:"6px 10px",flex:1}} autoFocus
+                      onKeyDown={e=>{if(e.key==="Enter"&&newDumpTitle.trim()){const nd={id:Date.now(),title:newDumpTitle.trim(),text:"",mood:"chaotic",ts:"just now",archived:false};setDumps(ds=>[...ds,nd]);setActiveDumpId(nd.id);setNewDumpTitle("");setEditingDump(false);}if(e.key==="Escape")setEditingDump(false);}}/>
+                    <button onClick={()=>setEditingDump(false)} style={{...S.ghost,color:"var(--text-muted)",fontSize:16}}>×</button>
+                  </div>
+                ):(
+                  <button onClick={()=>setEditingDump(true)} style={{...S.btn("var(--accent-color)",true),width:"100%"}}>+ new dump</button>
+                )}
+              </div>
+              
+              {dumps.some(d=>d.archived)&&<div style={{marginTop:18}}><span style={{...S.label,marginBottom:6}}>archived</span>
+                {dumps.filter(d=>d.archived).map(d=><div key={d.id} style={{padding:"7px 10px",borderRadius:10,fontSize:12,cursor:"pointer",marginBottom:4,background:"transparent",color:"var(--text-muted)"}} onClick={()=>setActiveDumpId(d.id)}>{d.title}</div>)}
+              </div>}
+            </div>
+
+            {/* Editor Workspace */}
+            <div>
+              {activeDump ? (
+                <div style={S.card} className="card-in">
+                  <div style={{marginBottom:14}}>
+                    <div style={{display:"flex", alignItems:"center", gap:8}}>
+                      <input value={activeDump.title} onChange={e=>updateDump(activeDump.id, {title: e.target.value})} style={{...S.input,fontSize:18,fontWeight:400,border:"none",background:"transparent",padding:0,flex:1}} placeholder="Title your dump..."/>
+                      <button onClick={()=>generateTagsAI(activeDump.id)} disabled={aiGeneratingTags} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
+                        {aiGeneratingTags ? "✨ Tagging..." : "✨ Auto-tag"}
+                      </button>
+                    </div>
+                    <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>Last modified {activeDump.ts}</div>
+                  </div>
+                  
+                  <div style={{marginBottom:14}}>
+                    <span style={S.label}>Mood for this dump</span>
+                    <MoodPicker value={activeDump.mood} onChange={m=>updateDump(activeDump.id, {mood: m})}/>
+                  </div>
+
+                  <div style={{position:"relative",marginBottom:14}}>
+                    <textarea value={activeDump.text} onChange={e=>updateDump(activeDump.id, {text: e.target.value})} style={{...S.textarea,minHeight:220,fontFamily:"var(--font-serif)",fontSize:15,lineHeight:1.7}} placeholder="unfiltered thoughts here..."/>
+                    <div style={{position:"absolute",right:10,bottom:10,fontSize:11,color:"var(--text-muted)"}}>{activeDump.text.length} chars · {activeDump.text.split(/\s+/).filter(Boolean).length} words</div>
+                  </div>
+
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={S.row}>
+                      <button style={S.btn("#a8c8a0",true)} onClick={()=>moveDumpToPlanner(activeDump)}>⚡ Convert to Post</button>
+                      <button style={S.btn("#a0b8c8",true)} onClick={()=>moveDumpToShoot(activeDump)}>🎬 Create Shoot</button>
+                    </div>
+                    <div style={S.row}>
+                      <button style={S.btn("var(--text-muted)",true)} onClick={()=>updateDump(activeDump.id, {archived: !activeDump.archived})}>{activeDump.archived?"Unarchive":"Archive"}</button>
+                      <button style={S.btn("#f0a090",true)} onClick={()=>deleteDump(activeDump.id)}>Delete</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{textAlign:"center",padding:"80px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
+                  <div style={{fontSize:32,opacity:0.2,marginBottom:12}}>✍️</div>
+                  <p style={{fontStyle:"italic",fontSize:15,marginBottom:8}}>chaos is just unedited creativity</p>
+                  <p style={{fontSize:12,maxWidth:320,margin:"0 auto 16px"}}>Write down hook ideas, script scripts, or raw thoughts before they float away.</p>
+                  <div style={{display:"flex",justifyContent:"center",gap:6,flexWrap:"wrap"}}>
+                    {DUMP_PLACEHOLDERS.map((pl,i)=><button key={i} onClick={()=>{
+                      const nd={id:Date.now(),title:pl,text:"",mood:"reflective",ts:"just now",archived:false};
+                      setDumps(ds=>[...ds,nd]);setActiveDumpId(nd.id);
+                    }} style={{...S.btn("var(--text-muted)",true),fontSize:11}}>{pl}</button>)}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 3. SHOOT PLANNER */}
+        {tab==="shoot"&&(
+          <div className="card-in" style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:20}}>
+            <div>
+              <span style={S.label}>shoot status</span>
+              <div style={{display:"flex",gap:4,marginBottom:14}}>
+                {["upcoming","week","month"].map(f=>(
+                  <button key={f} onClick={()=>setShootFilter(f)} style={{
+                    flex:1,padding:"5px",fontSize:11,borderRadius:10,border:`1px solid ${shootFilter===f?"var(--border-focus)":"var(--border-color)"}`,
+                    background:shootFilter===f?"var(--accent-light)":"transparent",color:shootFilter===f?"var(--text-primary)":"var(--text-muted)",cursor:"pointer"
+                  }}>{f}</button>
+                ))}
+              </div>
+              <span style={S.label}>sessions</span>
+              {filteredShoots.map(s=>(
+                <div key={s.id} onClick={()=>setSelectedShootId(s.id)} style={{
+                  padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:6,
+                  background:selectedShootId===s.id?"var(--bg-secondary)":"transparent",
+                  border:selectedShootId===s.id?"1px solid var(--border-focus)":"1px solid transparent"
+                }}>
+                  <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:selectedShootId===s.id?500:400}}>{s.name}</div>
+                  <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{shootDateLabel(s)}</div>
+                </div>
+              ))}
+              <button style={{...S.btn("var(--accent-color)",true),width:"100%",marginTop:10}} onClick={()=>{
+                const ns={id:Date.now(),name:"untitled shoot session",shootDate:todayStr,postId:null,slots:getSuggestedShotsForMood("default")};
+                setShoots(ss=>[...ss,ns]);
+                setSelectedShootId(ns.id);
+              }}>+ new session</button>
+            </div>
+
+            {/* Shoot session detailed workspace */}
+            <div>
+              {selectedShoot ? (
+                <div style={S.card} className="card-in">
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <input value={selectedShoot.name} onChange={e=>updateShoot(selectedShoot.id,{name:e.target.value})} style={{...S.input,fontSize:18,fontWeight:400,border:"none",background:"transparent",padding:0,flex:1}} placeholder="Enter session title"/>
+                    <button style={S.btn("#f0a090",true)} onClick={()=>deleteShoot(selectedShoot.id)}>Delete session</button>
+                  </div>
+
+                  <div style={{...S.grid2,marginBottom:18}}>
+                    <div>
+                      <span style={S.label}>shoot date</span>
+                      <input type="date" value={selectedShoot.shootDate||""} style={S.input} onChange={e=>updateShoot(selectedShoot.id,{shootDate:e.target.value})}/>
+                    </div>
+                    <div>
+                      <span style={S.label}>link content post</span>
+                      <select value={selectedShoot.postId||""} style={S.input} onChange={e=>updateShoot(selectedShoot.id,{postId:e.target.value?Number(e.target.value):null})}>
+                        <option value="">unlinked post</option>
+                        {posts.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Slot breakdown */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+                    {["morning","afternoon","evening"].map(slot=>(
+                      <div key={slot} style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
+                        <div style={{fontSize:12,fontWeight:600,color:"var(--text-secondary)",textTransform:"capitalize",marginBottom:8,borderBottom:"1px solid var(--border-color)",paddingBottom:4}}>
+                          {slot}
+                        </div>
+                        {(selectedShoot.slots[slot]||[]).map(sh=>(
+                          <div key={sh.id} style={{background:"var(--bg-secondary)",borderRadius:8,padding:8,marginBottom:6,fontSize:11,border:"1px solid var(--border-color)",position:"relative"}}>
+                            <button onClick={()=>removeShotFromShoot(slot,sh.id)} style={{position:"absolute",right:6,top:6,border:"none",background:"none",cursor:"pointer",color:"#f0a090",fontSize:12}}>×</button>
+                            <div style={{fontWeight:500,color:"var(--text-primary)",marginBottom:3,maxWidth:"85%"}}>{sh.shot}</div>
+                            {sh.loc && <div style={{color:"var(--text-secondary)"}}>📍 {sh.loc}</div>}
+                            {sh.mood && <div style={{color:"var(--text-muted)"}}>◎ {sh.mood} · {sh.light}</div>}
+                          </div>
+                        ))}
+                        {selectedShoot.slots[slot]?.length===0 && (
+                          <div style={{
+                            border: "1px dashed var(--border-color)",
+                            borderRadius: 10,
+                            padding: "12px 8px",
+                            textAlign: "center",
+                            cursor: "pointer",
+                            color: "var(--text-muted)",
+                            transition: "all 0.2s",
+                            background: "var(--bg-secondary)"
+                          }} onClick={() => {
+                            const defaultConcepts = {
+                              morning: { shot: "morning light overview / coffee pour", loc: "kitchen", mood: "soft", light: "natural", angle: "close-up", props: "mug" },
+                              afternoon: { shot: "workspace setup / screen typing", loc: "desk", mood: "cinematic", light: "soft window", angle: "slow pan", props: "keyboard" },
+                              evening: { shot: "sunset or cozy candle light", loc: "room", mood: "reflective", light: "warm lamp", angle: "static", props: "candle" }
+                            };
+                            const concept = defaultConcepts[slot];
+                            setShoots(ss => ss.map(s => {
+                              if(s.id !== selectedShoot.id) return s;
+                              return {
+                                ...s,
+                                slots: {
+                                  ...s.slots,
+                                  [slot]: [...(s.slots[slot] || []), { ...concept, id: Date.now() }]
+                                }
+                              };
+                            }));
+                          }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-focus)"; e.currentTarget.style.color = "var(--text-primary)"; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-color)"; e.currentTarget.style.color = "var(--text-muted)"; }}
+                          >
+                            <div style={{fontSize: 16, marginBottom: 2}}>+</div>
+                            <div style={{fontSize: 10}}>Click to add suggested {slot} shot</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Add Shot form */}
+                  <div style={{borderTop:"1px solid var(--border-color)",paddingTop:14}}>
+                    <span style={{fontSize:13,fontWeight:500,color:"var(--text-secondary)",display:"block",marginBottom:10}}>add new shot to list</span>
+                    <div style={{...S.grid2,gap:10,marginBottom:10}}>
+                      <div>
+                        <span style={S.label}>shot concept *</span>
+                        <input value={newShot.shot} onChange={e=>setNewShot({...newShot,shot:e.target.value})} placeholder="close-up coffee pour..." style={S.input}/>
+                      </div>
+                      <div>
+                        <span style={S.label}>target slot</span>
+                        <select value={shootSlot} onChange={e=>setShootSlot(e.target.value)} style={S.input}>
+                          <option value="morning">Morning</option>
+                          <option value="afternoon">Afternoon</option>
+                          <option value="evening">Evening</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+                      <div>
+                        <span style={S.label}>location</span>
+                        <input value={newShot.loc} onChange={e=>setNewShot({...newShot,loc:e.target.value})} placeholder="kitchen..." style={{...S.input,fontSize:12}}/>
+                      </div>
+                      <div>
+                        <span style={S.label}>lighting</span>
+                        <select value={newShot.light} onChange={e=>setNewShot({...newShot,light:e.target.value})} style={{...S.input,fontSize:12}}>
+                          <option value="">lighting...</option>
+                          {LIGHTING_OPTIONS.map(lo=><option key={lo} value={lo}>{lo}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <span style={S.label}>angle/motion</span>
+                        <select value={newShot.angle} onChange={e=>setNewShot({...newShot,angle:e.target.value})} style={{...S.input,fontSize:12}}>
+                          <option value="">angle...</option>
+                          {MOTION_TYPES.map(mo=><option key={mo} value={mo}>{mo}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <span style={S.label}>props</span>
+                        <input value={newShot.props} onChange={e=>setNewShot({...newShot,props:e.target.value})} placeholder="white mug..." style={{...S.input,fontSize:12}}/>
+                      </div>
+                    </div>
+                    <button style={S.btn("var(--accent-color)")} onClick={addShotToShoot} disabled={!newShot.shot.trim()}>+ Add Shot to Timeline</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{textAlign:"center",padding:"80px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
+                  <div style={{fontSize:32,opacity:0.2,marginBottom:12}}>🎬</div>
+                  <p style={{fontStyle:"italic",fontSize:15,marginBottom:4}}>visual layouts for execution</p>
+                  <p style={{fontSize:12}}>Pick or create a shoot session in the sidebar to organize your camera angles.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 4. B-ROLL VAULT */}
+        {tab==="vault"&&(
+          <div className="card-in">
+            <BRollVault vault={vault} setVault={setVault} vaultSearchQuery={vaultSearchQuery} setVaultSearchQuery={setVaultSearchQuery} />
+          </div>
+        )}
+
+        {/* 5. GROWTH JOURNAL */}
+        {tab==="journal"&&(
+          <div className="card-in" style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:20}}>
+            {/* Sidebar list of weeks */}
+            <div>
+              <span style={S.label}>weekly entries</span>
+              {journal.map(j=>(
+                <div key={j.id} onClick={()=>setSelectedJournalId(j.id)} style={{
+                  padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:6,
+                  background:selectedJournalId===j.id?"var(--bg-secondary)":"transparent",
+                  border:selectedJournalId===j.id?"1px solid var(--border-focus)":"1px solid transparent"
+                }}>
+                  <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:selectedJournalId===j.id?500:400}}>Week of {friendlyDate(j.weekStart)}</div>
+                  <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{j.followers} followers · mood: {j.mood}</div>
+                </div>
+              ))}
+
+              {!addingJournal && (
+                <button style={{...S.btn("var(--accent-color)",true),width:"100%",marginTop:10}} onClick={()=>{
+                  setNewJournal({ weekStart: todayStr, followers: "", posts: "", reach: "", saves: "", engagement: "", mood: "inspired", wins: "", lessons: "", reflection: "", notes: "" });
+                  setAddingJournal(true);
+                }}>+ check-in this week</button>
+              )}
+            </div>
+
+            {/* Checkin form / Detail view */}
+            <div>
+              {addingJournal ? (
+                <div style={S.card} className="card-in">
+                  <div style={{...S.row,justifyContent:"space-between",marginBottom:14}}>
+                    <div style={{display:"flex", alignItems:"center", gap:12}}>
+                      <h3 style={{fontSize:16,fontWeight:500}}>Weekly Check-In Form</h3>
+                      <button onClick={generateJournalAI} disabled={aiGeneratingJournal} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"4px 10px", border:"1px solid var(--accent-light)", borderRadius:12}}>
+                        {aiGeneratingJournal ? "✨ Analyzing stats..." : "✨ Analyze with AI"}
+                      </button>
+                    </div>
+                    <button style={{...S.ghost,fontSize:18,color:"var(--text-muted)"}} onClick={()=>setAddingJournal(false)}>×</button>
+                  </div>
+                  
+                  <div style={{...S.grid2,marginBottom:12}}>
+                    <div>
+                      <span style={S.label}>week start date</span>
+                      <input type="date" value={newJournal.weekStart} style={S.input} onChange={e=>setNewJournal({...newJournal,weekStart:e.target.value})}/>
+                    </div>
+                    <div>
+                      <span style={S.label}>creative mood</span>
+                      <select value={newJournal.mood} style={S.input} onChange={e=>setNewJournal({...newJournal,mood:e.target.value})}>
+                        <option value="inspired">Inspired</option>
+                        <option value="rebuilding">Rebuilding</option>
+                        <option value="exhausted">Exhausted</option>
+                        <option value="chaotic">Chaotic</option>
+                        <option value="proud">Proud</option>
+                        <option value="motivated">Motivated</option>
+                        <option value="reflective">Reflective</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(5, 1fr)",gap:8,marginBottom:12}}>
+                    <div>
+                      <span style={S.label}>followers</span>
+                      <input type="number" value={newJournal.followers} style={S.input} onChange={e=>setNewJournal({...newJournal,followers:e.target.value})} placeholder="e.g. 1400"/>
+                    </div>
+                    <div>
+                      <span style={S.label}>posts count</span>
+                      <input type="number" value={newJournal.posts} style={S.input} onChange={e=>setNewJournal({...newJournal,posts:e.target.value})} placeholder="3"/>
+                    </div>
+                    <div>
+                      <span style={S.label}>reach</span>
+                      <input type="number" value={newJournal.reach} style={S.input} onChange={e=>setNewJournal({...newJournal,reach:e.target.value})} placeholder="10k"/>
+                    </div>
+                    <div>
+                      <span style={S.label}>saves</span>
+                      <input type="number" value={newJournal.saves} style={S.input} onChange={e=>setNewJournal({...newJournal,saves:e.target.value})} placeholder="50"/>
+                    </div>
+                    <div>
+                      <span style={S.label}>engagement %</span>
+                      <input type="text" value={newJournal.engagement} style={S.input} onChange={e=>setNewJournal({...newJournal,engagement:e.target.value})} placeholder="5.4"/>
+                    </div>
+                  </div>
+
+                  <div style={{marginBottom:12}}>
+                    <span style={S.label}>reflection (most important section)</span>
+                    <textarea value={newJournal.reflection} style={S.textarea} onChange={e=>setNewJournal({...newJournal,reflection:e.target.value})} placeholder="e.g. 'voiceovers connected more, I stopped overthinking before posting...'"/>
+                  </div>
+
+                  <div style={{...S.grid2,marginBottom:14}}>
+                    <div>
+                      <span style={S.label}>tiny wins (one per line)</span>
+                      <textarea value={newJournal.wins} style={S.textarea} onChange={e=>setNewJournal({...newJournal,wins:e.target.value})} placeholder="posted despite fear&#10;first viral reel..."/>
+                    </div>
+                    <div>
+                      <span style={S.label}>lessons learned</span>
+                      <textarea value={newJournal.lessons} style={S.textarea} onChange={e=>setNewJournal({...newJournal,lessons:e.target.value})} placeholder="editing routine mistakes..."/>
+                    </div>
+                  </div>
+
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                    <button style={S.btn("var(--text-muted)")} onClick={()=>setAddingJournal(false)}>cancel</button>
+                    <button style={S.btn("var(--accent-color)")} onClick={()=>{
+                      const n={...newJournal, id:Date.now(), createdAt:todayStr, followers:Number(newJournal.followers)||0, posts:Number(newJournal.posts)||0, reach:Number(newJournal.reach)||0, saves:Number(newJournal.saves)||0};
+                      setJournal(prev=>[n,...prev]);
+                      setSelectedJournalId(n.id);
+                      setAddingJournal(false);
+                    }}>save journal entry</button>
+                  </div>
+                </div>
+              ) : selectedJournalId ? (
+                (() => {
+                  const j=journal.find(x=>x.id===selectedJournalId);
+                  if(!j) return null;
+                  
+                  // Simple SVG Sparkline math
+                  const makePath = key => {
+                    const vals = journal.map(x=>x[key]||0).reverse();
+                    if(vals.length<2) return "";
+                    const min = Math.min(...vals);
+                    const max = Math.max(...vals);
+                    const range = max-min || 1;
+                    const points = vals.map((v,idx)=>{
+                      const x = (idx / (vals.length-1)) * 140 + 10;
+                      const y = 40 - ((v-min)/range) * 30;
+                      return `${x},${y}`;
+                    });
+                    return "M " + points.join(" L ");
+                  };
+
+                  return(
+                    <div style={S.card} className="card-in">
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid var(--border-color)",paddingBottom:10,marginBottom:16}}>
+                        <div>
+                          <h3 style={{fontSize:18,fontWeight:400}}>Week of {friendlyDate(j.weekStart)} Check-In</h3>
+                          <span style={{fontSize:11,color:"var(--text-muted)"}}>tracked on {friendlyDate(j.createdAt)}</span>
+                        </div>
+                        <Tag label={j.mood} color={MOOD_COLORS[j.mood]||"#c9b99a"}/>
+                      </div>
+
+                      {/* Stat Grid with SVGs */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:18}}>
+                        {[
+                          {label:"followers",key:"followers",val:j.followers},
+                          {label:"weekly posts",key:"posts",val:j.posts},
+                          {label:"reach",key:"reach",val:j.reach},
+                          {label:"saves",key:"saves",val:j.saves}
+                        ].map(st=>(
+                          <div key={st.label} style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
+                            <span style={{fontSize:11,color:"var(--text-muted)",textTransform:"capitalize"}}>{st.label}</span>
+                            <div style={{fontSize:18,fontWeight:500,margin:"2px 0"}}>{st.val}</div>
+                            {journal.length>=2 && (
+                              <svg width="100%" height="45" style={{marginTop:4,overflow:"visible"}}>
+                                <path className="sparkline" d={makePath(st.key)} fill="none" stroke="var(--accent-color)" strokeWidth="1.5" />
+                                <circle cx={150} cy={40 - (((st.val - Math.min(...journal.map(x=>x[st.key]||0))) / (Math.max(...journal.map(x=>x[st.key]||0)) - Math.min(...journal.map(x=>x[st.key]||0)) || 1)) * 30)} r="2" fill="var(--accent-dark)"/>
+                              </svg>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Text Reflections */}
+                      <div style={{marginBottom:14}}>
+                        <span style={S.label}>Weekly reflection</span>
+                        <div style={{fontSize:14,fontStyle:"italic",lineHeight:1.7,color:"var(--text-primary)",background:"var(--accent-light)",borderRadius:10,padding:14}}>
+                          "{j.reflection}"
+                        </div>
+                      </div>
+
+                      <div style={{...S.grid2,gap:12,marginBottom:14}}>
+                        <div>
+                          <span style={S.label}>Tiny wins celebrating</span>
+                          <div style={{background:"var(--bg-primary)",border:"1px solid var(--border-color)",borderRadius:10,padding:12,fontSize:13}}>
+                            {j.wins ? j.wins.split("\n").map((w,i)=><div key={i} style={{marginBottom:4}}>✦ {w}</div>) : <span style={{fontStyle:"italic",color:"var(--text-muted)"}}>No wins logged.</span>}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={S.label}>lessons learned</span>
+                          <div style={{background:"var(--bg-primary)",border:"1px solid var(--border-color)",borderRadius:10,padding:12,fontSize:13,color:"var(--text-secondary)",lineHeight:1.5}}>
+                            {j.lessons || <span style={{fontStyle:"italic",color:"var(--text-muted)"}}>No lessons logged.</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{textAlign:"right"}}>
+                        <button style={S.btn("#f0a090",true)} onClick={()=>{
+                          setJournal(prev=>prev.filter(x=>x.id!==j.id));
+                          setSelectedJournalId(null);
+                        }}>Delete check-in</button>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div style={{textAlign:"center",padding:"80px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
+                  <div style={{fontSize:32,opacity:0.2,marginBottom:12}}>📓</div>
+                  <p style={{fontStyle:"italic",fontSize:15,marginBottom:4}}>small consistency becomes momentum</p>
+                  <p style={{fontSize:12,maxWidth:320,margin:"0 auto"}}>Growth is quieter than you think. Document the process, not just the milestones.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 6. COLLABS CRM */}
+        {tab==="collabs"&&(
+          <div className="card-in" style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:20}}>
+            {/* Sidebar list of pipelines */}
+            <div>
+              <button onClick={discoverBrandsAI} disabled={discoveringBrands} style={{...S.btn("var(--accent-color)", true), width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom:16}}>
+                {discoveringBrands ? "✨ Finding brands..." : "✨ AI Brand Discovery"}
+              </button>
+
+              <div style={{fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)", marginBottom: 8, marginTop: 4}}>💼 Active Deals</div>
+              {collabs.filter(c => ["discussing", "booked", "completed"].includes(c.status)).length === 0 ? (
+                <div style={{fontSize:12, fontStyle:"italic", color:"var(--text-muted)", marginBottom:12, paddingLeft:4}}>No active deals</div>
+              ) : (
+                collabs.filter(c => ["discussing", "booked", "completed"].includes(c.status)).map(c=>(
+                  <div key={c.id} onClick={()=>setSelectedCollabId(c.id)} style={{
+                    padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:6,
+                    background:selectedCollabId===c.id?"var(--bg-secondary)":"transparent",
+                    border:selectedCollabId===c.id?"1px solid var(--border-focus)":"1px solid transparent"
+                  }}>
+                    <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:selectedCollabId===c.id?500:400}}>{c.brand}</div>
+                    <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>₹{c.negotiatedAmount} · {c.status}</div>
+                  </div>
+                ))
+              )}
+
+              <div style={{fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)", marginBottom: 8, marginTop: 16}}>🎯 Pitch Pipeline</div>
+              {collabs.filter(c => !["discussing", "booked", "completed"].includes(c.status)).length === 0 ? (
+                <div style={{fontSize:12, fontStyle:"italic", color:"var(--text-muted)", marginBottom:12, paddingLeft:4}}>No pitches in pipeline</div>
+              ) : (
+                collabs.filter(c => !["discussing", "booked", "completed"].includes(c.status)).map(c=>(
+                  <div key={c.id} onClick={()=>setSelectedCollabId(c.id)} style={{
+                    padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:6,
+                    background:selectedCollabId===c.id?"var(--bg-secondary)":"transparent",
+                    border:selectedCollabId===c.id?"1px solid var(--border-focus)":"1px solid transparent"
+                  }}>
+                    <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:selectedCollabId===c.id?500:400}}>{c.brand}</div>
+                    <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{c.status}</div>
+                  </div>
+                ))
+              )}
+
+              {!addingCollab && (
+                <button style={{...S.btn("var(--text-secondary)",true),width:"100%",marginTop:16}} onClick={()=>{
+                  setNewCollab({ brand:"", contactName:"", email:"", platform:"Instagram", status:"dream brand", quote:"", negotiatedAmount:"", deliverables:[], dueDate:"", paymentStatus:"unpaid", notes:"", pitchDraft:"", followUpDraft:"", scriptText:"", wardrobe:"", props:"", briefFileName:"", briefFileUrl:"" });
+                  setFormDeliverables([]);
+                  setAddingCollab(true);
+                }}>+ log new collab</button>
+              )}
+            </div>
+
+            {/* Collab workspace detail */}
+            <div>
+              {collabDetailContent}
+            </div>
+          </div>
+        )}
+
+        {/* 7. AI TREND SCOUT */}
+        {tab==="trends"&&(
+          <div className="card-in">
+            {/* Top selection bar */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
+              <div style={S.row}>
+                {NICHES.map(n=>(
+                  <button key={n.id} onClick={()=>setActiveNiche(n.id)} style={{
+                    padding:"6px 14px",borderRadius:20,fontSize:12,border:`1px solid ${activeNiche===n.id?"var(--border-focus)":"var(--border-color)"}`,
+                    background:activeNiche===n.id?"var(--accent-light)":"transparent",color:activeNiche===n.id?"var(--text-primary)":"var(--text-muted)",
+                    fontWeight:activeNiche===n.id?600:400,cursor:"pointer"
+                  }}>{n.label}</button>
+                ))}
+              </div>
+
+              <button style={{...S.btn("var(--accent-color)"),fontWeight:500}} onClick={runAiScout} disabled={scouting}>
+                {scouting ? "Scanning Social APIs..." : "🎬 Scan Niche Trends"}
+              </button>
+            </div>
+
+            {/* Scouting Animation Overlay */}
+            {scouting && (
+              <div style={{
+                background:"var(--bg-secondary)",border:"1px solid var(--border-color)",borderRadius:16,padding:24,
+                marginBottom:20,textAlign:"center"
+              }} className="card-in">
+                <div style={{fontWeight:500,fontSize:14,color:"var(--text-primary)",marginBottom:8}}>Assistant Scouting platforms for {NICHES.find(x=>x.id===activeNiche)?.label}...</div>
+                <div style={{width:"100%",background:"var(--border-color)",height:4,borderRadius:4,overflow:"hidden",marginBottom:14}}>
+                  <div style={{width:`${scoutProgress}%`,background:"var(--accent-color)",height:"100%",transition:"width 0.3s"}}></div>
+                </div>
+                <div style={{fontSize:11,fontFamily:"monospace",color:"var(--text-muted)",textAlign:"left",maxHeight:100,overflowY:"auto"}}>
+                  {scoutLogs.map((log,idx)=><div key={idx} style={{marginBottom:3}}>• {log}</div>)}
+                </div>
+              </div>
+            )}
+
+            <div style={{marginBottom: 20, background:"var(--bg-secondary)", borderRadius: 16, border:"1px solid var(--border-color)", padding:16}}>
+              <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:10}}>
+                <span style={{fontSize:16}}>🔍</span>
+                <span style={S.label}>Viral Reel Breakdown</span>
+              </div>
+              <div style={{display:"flex", gap:10, alignItems:"center"}}>
+                <input value={reelUrl} onChange={e=>setReelUrl(e.target.value)} style={{...S.input, flex:1, padding:"8px 14px"}} placeholder="Paste TikTok / Instagram Reel URL here..."/>
+                <button onClick={analyzeReelAI} disabled={analyzingReel || !reelUrl} style={S.btn("var(--accent-color)", true)}>
+                  {analyzingReel ? "✨ Extracting metadata..." : "✨ Analyze & Break Down"}
+                </button>
+              </div>
+              
+              {reelBreakdown && !analyzingReel && (
+                <div className="card-in" style={{marginTop:16, borderTop:"1px solid var(--border-color)", paddingTop:16, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16}}>
+                  <div>
+                    <h4 style={{fontSize:13, fontWeight:600, color:"var(--text-primary)", marginBottom:8}}>👁️ Hidden Insights</h4>
+                    <ul style={{fontSize:12, color:"var(--text-secondary)", margin:0, paddingLeft:16}}>
+                      {reelBreakdown.insights.map((insight, i) => <li key={i} style={{marginBottom:4}}>{insight}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 style={{fontSize:13, fontWeight:600, color:"var(--text-primary)", marginBottom:8}}>🎬 Recreation Guide</h4>
+                    <ul style={{fontSize:12, color:"var(--text-secondary)", margin:0, paddingLeft:16}}>
+                      {reelBreakdown.steps.map((step, i) => <li key={i} style={{marginBottom:4}}>{step}</li>)}
+                    </ul>
+                  </div>
+                  <div style={{gridColumn: "span 2", display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12, borderTop: "1px solid var(--border-color)", paddingTop: 12, flexWrap: "wrap"}}>
+                    <span style={{fontSize: 11, color: "var(--text-muted)", alignSelf: "center", marginRight: "auto"}}>Move to:</span>
+                    <button onClick={saveBreakdownToDump} style={S.btn("var(--accent-color)", true)}>
+                      📥 Brain Dump
+                    </button>
+                    <button onClick={saveBreakdownToPlanner} style={S.btn("#a8c8a0", true)}>
+                      📅 Content Planner
+                    </button>
+                    <button onClick={saveBreakdownToShoot} style={S.btn("#d4c5e2", true)}>
+                      🎬 Shoot Session
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:20}}>
+              {/* Trends List Column */}
+              <div>
+                <span style={S.label}>AI Virality Reports for: {NICHES.find(x=>x.id===activeNiche)?.label}</span>
+                {aiTrends.length > 0 ? (
+                  aiTrends.map(t=>(
+                    <div key={t.id} style={{...S.card,marginBottom:12}} className="card-in">
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                        <div>
+                          <h4 style={{fontSize:15,fontWeight:500,color:"var(--text-primary)"}}>{t.title}</h4>
+                          <span style={{fontSize:11,color:"var(--text-muted)"}}>{t.views} · {t.postedDate}</span>
+                        </div>
+                        {t.audioTrending && <Tag label="trending audio ↗" color="#a8c8a0"/>}
+                      </div>
+
+                      <div style={{background:"var(--bg-primary)",borderRadius:10,padding:12,fontSize:13,marginBottom:10,border:"1px solid var(--border-color)"}}>
+                        <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:2}}>visual hooks text overlay</div>
+                        <div style={{fontStyle:"italic",fontWeight:500}}>"{t.hook}"</div>
+                      </div>
+
+                      <div style={{fontSize:13,color:"var(--text-secondary)",lineHeight:1.6,marginBottom:10}}>
+                        <span style={{fontWeight:600,color:"var(--text-primary)"}}>Why it works: </span>
+                        {t.whyItWorked}
+                      </div>
+
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,fontSize:12,borderTop:"1px solid var(--border-color)",paddingTop:10,marginBottom:12}}>
+                        <div>
+                          <span style={S.label}>suggested audio</span>
+                          <span style={{fontWeight:500}}>{t.audioTrack}</span>
+                        </div>
+                        <div>
+                          <span style={S.label}>action plan</span>
+                          <span style={{color:"var(--text-secondary)"}}>{t.keyTakeaway}</span>
+                        </div>
+                      </div>
+
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={S.row}>
+                          {t.visualTags.map(tg=><span key={tg} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"var(--accent-light)",color:"var(--accent-dark)"}}>#{tg}</span>)}
+                        </div>
+                        {/* Find B-roll Link action */}
+                        <button style={S.btn("var(--accent-color)",true)} onClick={()=>{
+                          const searchTag = t.visualTags[0];
+                          setVaultSearchQuery(searchTag);
+                          setTab("vault");
+                        }}>🔍 Find B-Roll in Vault</button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{textAlign:"center",padding:"50px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
+                    No trends scanned. Click 'Scan Niche Trends' at the top to search.
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Column */}
+              <div>
+                <span style={S.label}>AI Assistant Chat</span>
+                <div style={{
+                  background:"var(--bg-secondary)",border:"1px solid var(--border-color)",borderRadius:16,
+                  height:420,display:"flex",flexDirection:"column",justifyContent:"space-between",padding:14
+                }} className="card-in">
+                  <div style={{overflowY:"auto",flex:1,marginBottom:10,paddingRight:4}}>
+                    {aiChatResponses.map((msg,idx)=>(
+                      <div key={idx} style={{
+                        textAlign:msg.sender==="user"?"right":"left",marginBottom:10,
+                      }}>
+                        <div style={{
+                          display:"inline-block",padding:"8px 12px",borderRadius:12,fontSize:12,
+                          background:msg.sender==="user"?"var(--accent-color)":"var(--bg-primary)",
+                          color:msg.sender==="user"?"#fff":"var(--text-primary)",
+                          maxWidth:"90%",lineHeight:1.5,whiteSpace:"pre-wrap",
+                          border:msg.sender!=="user"?"1px solid var(--border-color)":"none"
+                        }}>
+                          {msg.text}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={aiChatQuery} onChange={e=>setAiChatQuery(e.target.value)} style={{...S.input,fontSize:12,padding:"6px 10px",flex:1}} placeholder="Ask: 'give me workspace hooks'..."
+                      onKeyDown={e=>{if(e.key==="Enter")sendAiChat();}}/>
+                    <button style={S.btn("var(--accent-color)",true)} onClick={sendAiChat}>Send</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}

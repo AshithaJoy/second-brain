@@ -1,0 +1,197 @@
+/* Google Fonts import is done in index.html, let's setup the root variables */
+
+:root {
+  /* Creator Studio Light Theme */
+  --bg-primary: #F9F8F6;
+  --bg-secondary: #FFFFFF;
+  --text-primary: #2D2A26;
+  --text-secondary: #736F6A;
+  --text-muted: #A39E99;
+  --border-color: #E8E5DF;
+  --border-focus: #D86344;
+  --accent-color: #D86344;
+  --accent-light: #D8634418;
+  --accent-dark: #BA4E32;
+  
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-sans: 'Inter', 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  --shadow-sm: 0 2px 8px rgba(45, 42, 38, 0.04);
+  --shadow-md: 0 8px 24px rgba(45, 42, 38, 0.06);
+  --shadow-lg: 0 16px 40px rgba(45, 42, 38, 0.08);
+  
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-slow: 0.4s ease;
+  
+  --border-radius-lg: 20px;
+  --border-radius-md: 14px;
+  --border-radius-sm: 8px;
+}
+
+[data-theme="dark"] {
+  /* Pro Edit Bay Dark Theme */
+  --bg-primary: #121214;
+  --bg-secondary: #1C1C1E;
+  --text-primary: #F2F2F2;
+  --text-secondary: #9E9EA3;
+  --text-muted: #6C6C70;
+  --border-color: #2C2C2E;
+  --border-focus: #5E5CE6;
+  --accent-color: #5E5CE6;
+  --accent-light: #5E5CE624;
+  --accent-dark: #7D7AFF;
+  
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  transition: background-color var(--transition-normal), color var(--transition-normal);
+  overflow-x: hidden;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-color);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulseSoft {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.card-in {
+  animation: fadeIn var(--transition-normal) forwards;
+}
+
+.slide-in {
+  animation: slideInRight var(--transition-normal) forwards;
+}
+
+/* Form resets & focus states */
+input, textarea, select {
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--border-focus) !important;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* Masonry layout style for B-Roll Vault and niche cards */
+.masonry-grid {
+  columns: 2 300px;
+  column-gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .masonry-grid {
+    columns: 1;
+  }
+}
+
+/* Main typography elements */
+h1, h2, h3, .serif-font {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* Soft system buttons */
+button {
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+}
+
+button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+/* Print Invoice styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .printable-invoice, .printable-invoice * {
+    visibility: visible;
+  }
+  .printable-invoice {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
