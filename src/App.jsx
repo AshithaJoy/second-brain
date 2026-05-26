@@ -693,6 +693,7 @@ export default function App(){
   const [discoveringBrands, setDiscoveringBrands] = useState(false);
   const [aiEstimatingCollab, setAiEstimatingCollab] = useState(false);
   const [estimationStep, setEstimationStep] = useState("");
+  const [aiRewritingDump, setAiRewritingDump] = useState(false);
   const [pitchUrl, setPitchUrl] = useState("");
   const [reelUrl, setReelUrl] = useState("");
   const [analyzingReel, setAnalyzingReel] = useState(false);
@@ -1026,6 +1027,38 @@ export default function App(){
       updateDump(id, {title: "✨ AI: Cinematic Morning Vlog"});
       setAiGeneratingTags(false);
     }, 1500);
+  };
+
+  const rewriteDumpAI = (id) => {
+    const dump = dumps.find(d => d.id === id);
+    if (!dump) return;
+    
+    setAiRewritingDump(true);
+    
+    setTimeout(() => {
+      let rewrittenText = "";
+      const rawText = dump.text.trim();
+
+      if (rawText.length > 0) {
+        rewrittenText = `✨ POLISHED REWRITE ✨\n\nOriginal Idea: ${dump.title}\n\n[HOOK DETAILS]\n1. "They say consistency is key, but here is the raw reality..."\n2. "The secret to rebuilding your routine without burning out..."\n\n[STRUCTURED CONTENT GUIDE]\n- 0:00 - 0:03: Start with a visual hook showing a raw close-up (e.g. coffee steam or workspace details).\n- 0:03 - 0:10: Transition to secondary action footage with a calm voiceover reading the narrative outline.\n- 0:10 - 0:15: End with a clean call-to-action showing a static text overlay.\n\n[SCRIPT OUTLINE]\n"${rawText}"\n\n[SUGGESTED CAPTION]\nSometimes the best work happens in the quiet moments before the rest of the world wakes up. Here is a look at the system I'm building step by step.\n\n#creatorlife #productivity #slowliving`;
+      } else {
+        rewrittenText = `✨ CREATED FROM SCANDINAVIAN KINFOLK STYLE ✨\n\nTitle: Aesthetic Workspace Routine\n\n[HOOK]\n"My 6 AM setup ritual — how I design space for slow focus."\n\n[VISUAL STEPS]\n1. Close-up of typing on keyboard in warm lamp lighting.\n2. Panning shot of a green desk pad and a hot coffee mug.\n3. Slow tracking shot of setting up the schedule book.\n\n[SPEECH / TEXT OVERLAY]\n"Productivity isn't about doing more. It is about creating space for what matters. Here is my system today."`;
+      }
+
+      setDumps(ds => ds.map(d => {
+        if (d.id === id) {
+          return {
+            ...d,
+            title: `✨ AI: ${d.title.replace(/^✨ AI:\s*/, "") || "Aesthetic Vlog Idea"}`,
+            text: rewrittenText,
+            ts: "just now"
+          };
+        }
+        return d;
+      }));
+      
+      setAiRewritingDump(false);
+    }, 1800);
   };
 
   useEffect(()=>{
@@ -2149,69 +2182,6 @@ export default function App(){
               );})}
             </div>
 
-            {selectedPost&&(
-              <div style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: "rgba(18, 17, 16, 0.4)",
-                backdropFilter: "blur(4px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 1000,
-                padding: "20px"
-              }} onClick={() => setSelectedPost(null)}>
-                <div className="card-in" style={{
-                  ...S.card,
-                  width: "100%",
-                  maxWidth: "600px",
-                  maxHeight: "90vh",
-                  overflowY: "auto",
-                  border: "1px solid var(--border-focus)",
-                  boxShadow: "var(--shadow-lg)",
-                  margin: 0
-                }} onClick={e => e.stopPropagation()}>
-                  <div style={{...S.row,justifyContent:"space-between",marginBottom:16}}>
-                    <input value={selectedPost.title} onChange={e=>updatePost(selectedPost.id,{title:e.target.value})} style={{...S.input,fontSize:16,fontWeight:500,border:"none",background:"transparent",padding:0,flex:1}}/>
-                    <button onClick={()=>setSelectedPost(null)} style={{...S.ghost,fontSize:20,color:"var(--text-muted)"}}>×</button>
-                  </div>
-                  <div style={S.grid2}>
-                    <div><span style={S.label}>date</span><input type="date" value={selectedPost.date||""} style={S.input} onChange={e=>updatePost(selectedPost.id,{date:e.target.value})}/></div>
-                    <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=><button key={t} onClick={()=>updatePost(selectedPost.id,{type:t})} style={{...S.btn(selectedPost.type===t?"var(--accent-color)":"var(--border-color)",true),background:selectedPost.type===t?"var(--accent-light)":"transparent"}}>{TYPE_ICONS[t]} {t}</button>)}</div></div>
-                  </div>
-                  <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=><button key={st} onClick={()=>updatePost(selectedPost.id,{status:st})} style={{...S.btn(STATUS_COLORS[st],true),background:selectedPost.status===st?STATUS_COLORS[st]+"20":"transparent"}}>{st==="posted"?"released ✦":st==="archived"?"archived":st}</button>)}</div></div>
-                  <div style={{marginTop:12}}><span style={S.label}>mood</span><MoodPicker value={selectedPost.mood} onChange={m=>updatePost(selectedPost.id,{mood:m})}/></div>
-                  <div style={{marginTop:12}}><span style={S.label}>linked shoot</span>
-                    <div style={S.row}>
-                      <select value={selectedPost.shootId||""} style={{...S.input,flex:1,cursor:"pointer"}} onChange={e=>updatePost(selectedPost.id,{shootId:e.target.value?Number(e.target.value):null})}>
-                        <option value="">no shoot linked</option>
-                        {shoots.map(s=><option key={s.id} value={s.id}>{s.name}{s.shootDate?" · "+friendlyDate(s.shootDate):""}</option>)}
-                      </select>
-                      {selectedPost.shootId&&<button style={S.btn("#a0b8c8",true)} onClick={()=>{setSelectedShootId(selectedPost.shootId);setTab("shoot");setSelectedPost(null);}}>open →</button>}
-                      <button style={S.btn("#d4c5e2",true)} onClick={()=>{const ns={id:Date.now(),name:selectedPost.title+" — shoot",shootDate:selectedPost.date||todayStr,postId:selectedPost.id,slots:getSuggestedShotsForMood(selectedPost.mood)};setShoots(ss=>[...ss,ns]);updatePost(selectedPost.id,{shootId:ns.id});setSelectedShootId(ns.id);setSelectedPost(null);}}>+ create shoot</button>
-                    </div>
-                  </div>
-                  <div style={{marginTop:14}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <span style={S.label}>caption & ideas</span>
-                      <button onClick={generatePostIdeasAI} disabled={aiGeneratingPostIdeas} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
-                        {aiGeneratingPostIdeas ? "✨ Generating..." : "✨ AI Thumbnails & Hooks"}
-                      </button>
-                    </div>
-                    <textarea value={selectedPost.caption} style={S.textarea} placeholder="what do you want to say..." onChange={e=>updatePost(selectedPost.id,{caption:e.target.value})}/>
-                  </div>
-                  <div style={{marginTop:10}}><span style={S.label}>hashtags</span><textarea value={selectedPost.hashtags} style={{...S.textarea,minHeight:46}} placeholder="#yourhashtags" onChange={e=>updatePost(selectedPost.id,{hashtags:e.target.value})}/></div>
-                  <div style={{...S.row,justifyContent:"flex-end",marginTop:14}}>
-                    <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(selectedPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
-                    <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(selectedPost.id)}>delete forever</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div><span style={{...S.label,marginBottom:10}}>all posts</span>
               {["draft","scheduled","posted","archived"].map(status=>{
                 const group=posts.filter(p=>p.status===status).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
@@ -2266,6 +2236,9 @@ export default function App(){
                       <input value={activeDump.title} onChange={e=>updateDump(activeDump.id, {title: e.target.value})} style={{...S.input,fontSize:18,fontWeight:400,border:"none",background:"transparent",padding:0,flex:1}} placeholder="Title your dump..."/>
                       <button onClick={()=>generateTagsAI(activeDump.id)} disabled={aiGeneratingTags} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
                         {aiGeneratingTags ? "✨ Tagging..." : "✨ Auto-tag"}
+                      </button>
+                      <button onClick={()=>rewriteDumpAI(activeDump.id)} disabled={aiRewritingDump} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
+                        {aiRewritingDump ? "✨ Rewriting..." : "✨ AI Rewrite"}
                       </button>
                     </div>
                     <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>Last modified {activeDump.ts}</div>
@@ -2908,6 +2881,71 @@ export default function App(){
         )}
 
       </div>
+
+      {/* Relocated Edit Post Modal (Fixed Position relative to Viewport) */}
+      {selectedPost&&(
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(18, 17, 16, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "20px"
+        }} onClick={() => setSelectedPost(null)}>
+          <div className="card-in" style={{
+            ...S.card,
+            width: "100%",
+            maxWidth: "600px",
+            maxHeight: "90vh",
+            overflowY: "auto",
+            border: "1px solid var(--border-focus)",
+            boxShadow: "var(--shadow-lg)",
+            margin: 0
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{...S.row,justifyContent:"space-between",marginBottom:16}}>
+              <input value={selectedPost.title} onChange={e=>updatePost(selectedPost.id,{title:e.target.value})} style={{...S.input,fontSize:16,fontWeight:500,border:"none",background:"transparent",padding:0,flex:1}}/>
+              <button onClick={()=>setSelectedPost(null)} style={{...S.ghost,fontSize:20,color:"var(--text-muted)"}}>×</button>
+            </div>
+            <div style={S.grid2}>
+              <div><span style={S.label}>date</span><input type="date" value={selectedPost.date||""} style={S.input} onChange={e=>updatePost(selectedPost.id,{date:e.target.value})}/></div>
+              <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=><button key={t} onClick={()=>updatePost(selectedPost.id,{type:t})} style={{...S.btn(selectedPost.type===t?"var(--accent-color)":"var(--border-color)",true),background:selectedPost.type===t?"var(--accent-light)":"transparent"}}>{TYPE_ICONS[t]} {t}</button>)}</div></div>
+            </div>
+            <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=><button key={st} onClick={()=>updatePost(selectedPost.id,{status:st})} style={{...S.btn(STATUS_COLORS[st],true),background:selectedPost.status===st?STATUS_COLORS[st]+"20":"transparent"}}>{st==="posted"?"released ✦":st==="archived"?"archived":st}</button>)}</div></div>
+            <div style={{marginTop:12}}><span style={S.label}>mood</span><MoodPicker value={selectedPost.mood} onChange={m=>updatePost(selectedPost.id,{mood:m})}/></div>
+            <div style={{marginTop:12}}><span style={S.label}>linked shoot</span>
+              <div style={S.row}>
+                <select value={selectedPost.shootId||""} style={{...S.input,flex:1,cursor:"pointer"}} onChange={e=>updatePost(selectedPost.id,{shootId:e.target.value?Number(e.target.value):null})}>
+                  <option value="">no shoot linked</option>
+                  {shoots.map(s=><option key={s.id} value={s.id}>{s.name}{s.shootDate?" · "+friendlyDate(s.shootDate):""}</option>)}
+                </select>
+                {selectedPost.shootId&&<button style={S.btn("#a0b8c8",true)} onClick={()=>{setSelectedShootId(selectedPost.shootId);setTab("shoot");setSelectedPost(null);}}>open →</button>}
+                <button style={S.btn("#d4c5e2",true)} onClick={()=>{const ns={id:Date.now(),name:selectedPost.title+" — shoot",shootDate:selectedPost.date||todayStr,postId:selectedPost.id,slots:getSuggestedShotsForMood(selectedPost.mood)};setShoots(ss=>[...ss,ns]);updatePost(selectedPost.id,{shootId:ns.id});setSelectedShootId(ns.id);setSelectedPost(null);}}>+ create shoot</button>
+              </div>
+            </div>
+            <div style={{marginTop:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <span style={S.label}>caption & ideas</span>
+                <button onClick={generatePostIdeasAI} disabled={aiGeneratingPostIdeas} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
+                  {aiGeneratingPostIdeas ? "✨ Generating..." : "✨ AI Thumbnails & Hooks"}
+                </button>
+              </div>
+              <textarea value={selectedPost.caption} style={S.textarea} placeholder="what do you want to say..." onChange={e=>updatePost(selectedPost.id,{caption:e.target.value})}/>
+            </div>
+            <div style={{marginTop:10}}><span style={S.label}>hashtags</span><textarea value={selectedPost.hashtags} style={{...S.textarea,minHeight:46}} placeholder="#yourhashtags" onChange={e=>updatePost(selectedPost.id,{hashtags:e.target.value})}/></div>
+            <div style={{...S.row,justifyContent:"flex-end",marginTop:14}}>
+              <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(selectedPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
+              <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(selectedPost.id)}>delete forever</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
