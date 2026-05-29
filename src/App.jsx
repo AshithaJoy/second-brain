@@ -1,4 +1,51 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuthStore } from "./stores/auth.store";
+import {
+  getDumps as apiGetDumps,
+  createDump as apiCreateDump,
+  updateDump as apiUpdateDump,
+  deleteDump as apiDeleteDump,
+  rewriteDump as apiRewriteDump,
+  getJobStatus as apiGetJobStatus
+} from "./api/brain.api";
+import {
+  getPosts as apiGetPosts,
+  createPost as apiCreatePost,
+  updatePost as apiUpdatePost,
+  deletePost as apiDeletePost,
+  generateHooks as apiGenerateHooks,
+  generateCaptions as apiGenerateCaptions,
+  getShoots as apiGetShoots,
+  createShoot as apiCreateShoot,
+  updateShoot as apiUpdateShoot,
+  deleteShoot as apiDeleteShoot
+} from "./api/planner.api";
+import {
+  getCollabs as apiGetCollabs,
+  createCollab as apiCreateCollab,
+  updateCollab as apiUpdateCollab,
+  deleteCollab as apiDeleteCollab,
+  estimateCollab as apiEstimateCollab,
+  discoverBrands as apiDiscoverBrands
+} from "./api/collabs.api";
+import {
+  getBreakdowns as apiGetBreakdowns,
+  breakdownReel as apiBreakdownReel,
+  deleteBreakdown as apiDeleteBreakdown
+} from "./api/reels.api";
+import {
+  getBRolls as apiGetBRolls,
+  createBRoll as apiCreateBRoll,
+  updateBRoll as apiUpdateBRoll,
+  deleteBRoll as apiDeleteBRoll
+} from "./api/broll.api";
+import {
+  getJournalEntries as apiGetJournalEntries,
+  createJournalEntry as apiCreateJournalEntry,
+  updateJournalEntry as apiUpdateJournalEntry,
+  deleteJournalEntry as apiDeleteJournalEntry
+} from "./api/journal.api";
+import { SaveButton, SaveToast } from "./components/SaveUX";
 
 // ── constants ──────────────────────────────────────────────────────────────────
 const MOODS = ["cinematic","soft","chaotic","reflective","motivated","low-energy","rebuilding","funny","existential"];
@@ -72,6 +119,53 @@ const calculateCollabRates = (deliverables) => {
   const subtotal = reelsBase + storiesCost + carouselsCost + photosCost + customsCost;
   const discount = reelsDiscount;
   const total = subtotal - discount;
+
+  const itemsBreakdown = [];
+  if (reels > 0) {
+    itemsBreakdown.push({
+      name: "Reels Content Creation",
+      qty: reels,
+      rate: RATES.reel,
+      discount: reelsDiscount,
+      total: reelsCost
+    });
+  }
+  if (stories > 0) {
+    itemsBreakdown.push({
+      name: "Instagram Stories",
+      qty: stories,
+      rate: RATES.story,
+      discount: 0,
+      total: storiesCost
+    });
+  }
+  if (carousels > 0) {
+    itemsBreakdown.push({
+      name: "Carousel Posts",
+      qty: carousels,
+      rate: RATES.carousel,
+      discount: 0,
+      total: carouselsCost
+    });
+  }
+  if (photos > 0) {
+    itemsBreakdown.push({
+      name: "Static Photo Content",
+      qty: photos,
+      rate: RATES.photo,
+      discount: 0,
+      total: photosCost
+    });
+  }
+  customs.forEach(cust => {
+    itemsBreakdown.push({
+      name: cust.text || "Custom Deliverable",
+      qty: cust.qty,
+      rate: cust.price,
+      discount: 0,
+      total: cust.qty * cust.price
+    });
+  });
   
   return {
     reels,
@@ -87,7 +181,8 @@ const calculateCollabRates = (deliverables) => {
     subtotal,
     discount,
     total,
-    customs
+    customs,
+    itemsBreakdown
   };
 };
 
@@ -130,33 +225,12 @@ const load = (key,fb) => { try { const v=localStorage.getItem(key); return v?JSO
 const save = (key,val) => { try { localStorage.setItem(key,JSON.stringify(val)); } catch {} };
 
 // ── seed data ──────────────────────────────────────────────────────────────────
-const SEED_POSTS  = [
-  {id:1,date:daysOffset(3),title:"gym comeback reel",type:"reel",status:"draft",mood:"motivated",caption:"",hashtags:"",shootId:null},
-  {id:2,date:daysOffset(8),title:"morning routine",type:"carousel",status:"scheduled",mood:"soft",caption:"",hashtags:"",shootId:null},
-  {id:3,date:daysOffset(-3),title:"overthinking voiceover",type:"story",status:"posted",mood:"existential",caption:"",hashtags:"",shootId:null},
-];
-const SEED_DUMPS  = [
-  {id:1,title:"late night spiral",text:"POV: rebuilding life slowly — the quiet mornings, the gym, the coffee ritual",mood:"rebuilding",ts:"2h ago",archived:false},
-  {id:2,title:"cinematic moment",text:"the light through the window at 6am hits different when you're the only one awake",mood:"cinematic",ts:"yesterday",archived:false},
-];
-const SEED_SHOOTS = [
-  {id:101,name:"Gym Comeback Session",shootDate:daysOffset(2),postId:1,slots:{morning:[{id:1,shot:"golden hour window",loc:"bedroom",mood:"soft",light:"natural",angle:"low angle",props:"coffee mug"}],afternoon:[{id:2,shot:"gym warmup footage",loc:"gym",mood:"motivated",light:"fluorescent",angle:"side profile",props:"water bottle"}],evening:[]}},
-  {id:102,name:"Morning Routine",shootDate:daysOffset(7),postId:2,slots:{morning:[{id:3,shot:"coffee ritual close-up",loc:"kitchen",mood:"soft",light:"warm lamp",angle:"overhead",props:"white mug"}],afternoon:[],evening:[]}},
-];
-const SEED_VAULT  = [
-  {id:201,title:"rainy car window",description:"rainy car window after gym — drops trailing down, city blur behind, quiet and heavy feeling",mood:"reflective",visualTags:["rain","window","car","blur"],emotionTags:["heavy","quiet","post-workout"],location:"car",lighting:"overcast",motionType:"static",audioFeeling:"white noise, rain",timeOfDay:"evening",weather:"rainy",clipType:"video",cinematicUse:"emotional pause",energy:"quiet",notes:"",fileUrl:"",thumbnailUrl:"",favorite:true,createdAt:daysOffset(-5)},
-  {id:202,title:"morning coffee steam",description:"peaceful coffee steam rising in soft morning light — the moment before the day begins",mood:"soft",visualTags:["coffee","steam","morning","warmth"],emotionTags:["peaceful","hopeful","slow"],location:"kitchen",lighting:"soft window",motionType:"static",audioFeeling:"silence, occasional bird",timeOfDay:"morning",weather:"sunny",clipType:"video",cinematicUse:"intro shot",energy:"soft",notes:"good for voiceover support",fileUrl:"",thumbnailUrl:"",favorite:false,createdAt:daysOffset(-12)},
-  {id:203,title:"blue hour walk",description:"quiet walking footage during blue hour — tired but present, city quiet, footsteps on pavement",mood:"cinematic",visualTags:["walk","city","blue hour","pavement"],emotionTags:["tired","present","rebuilding"],location:"street",lighting:"blue hour",motionType:"handheld",audioFeeling:"footsteps, distant traffic",timeOfDay:"blue hour",weather:"cloudy",clipType:"video",cinematicUse:"voiceover support",energy:"quiet",notes:"",fileUrl:"",thumbnailUrl:"",favorite:true,createdAt:daysOffset(-2)},
-];
-const SEED_JOURNAL = [
-  {id:301,weekStart:daysOffset(-14),followers:1240,posts:3,reach:8900,saves:45,engagement:"5.1",mood:"reflective",wins:"Posted my first voiceover reel\nKept editing simple and personal",lessons:"Overcomplicating the color grade delayed posting. Warm lamp lighting is enough.",reflection:"It felt scary to put my voice out there, but slow aesthetics and real words connect better.",notes:"",createdAt:daysOffset(-14)},
-  {id:302,weekStart:daysOffset(-7),followers:1310,posts:4,reach:12500,saves:72,engagement:"6.2",mood:"motivated",wins:"3-day consistency streak\nFirst brand responded to my query\nTried a cinematic list template",lessons:"Aesthetic steam close-ups have high save rates. Set up tripod before breakfast.",reflection:"Seeing metrics grow slowly is motivating, but focusing on the joy of filming coffee steam is the real win.",notes:"",createdAt:daysOffset(-7)}
-];
-const SEED_COLLABS = [
-  {id:401,brand:"Slow Grind Coffee",contactName:"Elena Rostova",email:"elena@slowgrind.co",platform:"Instagram",status:"discussing",quote:"500",negotiatedAmount:"450",deliverables:"1x Reel showcasing slow morning routine\n2x Stories with link sticker",dueDate:daysOffset(10),paymentStatus:"invoice sent",notes:"Requested warm tones, voiceover about slow productivity.",pitchDraft:"Hi Elena, I love slow morning rituals and built a quiet community of 1.3k creators. I would love to film a cinematic segment featuring Slow Grind Coffee...",followUpDraft:"Hi Elena, just checking in to see if the timeline for the reel fits your upcoming launch schedule.",createdAt:daysOffset(-4)},
-  {id:402,brand:"Kinfolk Publishing",contactName:"Marcus Aurel",email:"collabs@kinfolk.com",platform:"Instagram",status:"dream brand",quote:"0",negotiatedAmount:"0",deliverables:"1x Carousel review of the slow living quarterly",dueDate:"",paymentStatus:"unpaid",notes:"Planning outreach once I reach 2k followers.",pitchDraft:"",followUpDraft:"",createdAt:daysOffset(-18)},
-  {id:403,brand:"Oasis Desk Pads",contactName:"Sarah Jenkins",email:"sarah@oasis.co",platform:"Instagram",status:"completed",quote:"300",negotiatedAmount:"300",deliverables:"1x Reel showing workspace setup",dueDate:daysOffset(-8),paymentStatus:"paid",notes:"Super smooth, loved the panning shots of their green cork pad.",pitchDraft:"",followUpDraft:"",createdAt:daysOffset(-25)}
-];
+const SEED_POSTS  = [];
+const SEED_DUMPS  = [];
+const SEED_SHOOTS = [];
+const SEED_VAULT  = [];
+const SEED_JOURNAL = [];
+const SEED_COLLABS = [];
 
 const COLLAB_TEMPLATES = {
   outreach: {
@@ -244,7 +318,7 @@ function ChipSelect({label,options,value,onChange}){
 }
 
 // ── B-ROLL VAULT COMPONENT ─────────────────────────────────────────────────────
-function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery}){
+function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery,showToast}){
   const [view,setView]         = useState("grid");    // grid | detail | add
   const [selected,setSelected] = useState(null);
   const [filterMood,setFilterMood]   = useState("");
@@ -255,11 +329,11 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery}){
   const fileRef = useRef();
 
   const emptyClip = () => ({
-    id:Date.now(),title:"",description:"",mood:"cinematic",
+    title:"",description:"",mood:"cinematic",
     visualTags:[],emotionTags:[],location:"",lighting:"",motionType:"",
     audioFeeling:"",timeOfDay:"",weather:"",clipType:"video",
     cinematicUse:"",energy:"soft",notes:"",fileUrl:"",thumbnailUrl:"",
-    favorite:false,createdAt:todayStr,
+    favorite:false,
   });
   const [form,setForm] = useState(emptyClip());
   const [tagInput,setTagInput]   = useState("");
@@ -275,14 +349,63 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery}){
     updateForm({fileUrl:url, thumbnailUrl:url, clipType: file.type.startsWith("video")?"video":"image"});
   };
 
-  const saveClip = () => {
+  const saveClip = async () => {
     if(!form.title.trim()) return;
-    setVault(v=>[{...form,id:Date.now(),createdAt:todayStr},...v]);
-    setForm(emptyClip()); setPreviewUrl(""); setView("grid");
+    try {
+      const payload = {
+        title: form.title,
+        description: form.description,
+        mood: form.mood,
+        visualTags: form.visualTags,
+        emotionTags: form.emotionTags,
+        location: form.location,
+        lighting: form.lighting,
+        motionType: form.motionType,
+        audioFeeling: form.audioFeeling,
+        timeOfDay: form.timeOfDay,
+        weather: form.weather,
+        clipType: form.clipType || "video",
+        cinematicUse: form.cinematicUse,
+        energy: form.energy || "soft",
+        notes: form.notes,
+        fileUrl: form.fileUrl,
+        thumbnailUrl: form.thumbnailUrl,
+        favorite: form.favorite,
+      };
+      const saved = await apiCreateBRoll(payload);
+      setVault(v=>[saved,...v]);
+      setForm(emptyClip()); setPreviewUrl(""); setView("grid");
+      if (showToast) showToast("B-Roll clip saved to vault!");
+    } catch (err) {
+      console.error("[BRollVault] Failed to save B-Roll:", err);
+      if (showToast) showToast("Failed to save B-Roll clip.", "error");
+    }
   };
 
-  const toggleFav = id => setVault(v=>v.map(c=>c.id===id?{...c,favorite:!c.favorite}:c));
-  const deleteClip= id => { setVault(v=>v.filter(c=>c.id!==id)); setView("grid"); setSelected(null); };
+  const toggleFav = async id => {
+    const c = vault.find(x=>x.id===id);
+    if(!c) return;
+    try {
+      const updated = await apiUpdateBRoll(id, { favorite: !c.favorite });
+      setVault(v=>v.map(x=>x.id===id?updated:x));
+      setSelected(updated);
+    } catch(err) {
+      console.error("[BRollVault] Failed to toggle favorite:", err);
+      if (showToast) showToast("Failed to toggle favorite status.", "error");
+    }
+  };
+
+  const deleteClip = async id => {
+    try {
+      await apiDeleteBRoll(id);
+      setVault(v=>v.filter(x=>x.id!==id));
+      setView("grid"); setSelected(null);
+      if (showToast) showToast("B-Roll clip deleted.");
+    } catch(err) {
+      console.error("[BRollVault] Failed to delete clip:", err);
+      if (showToast) showToast("Failed to delete clip.", "error");
+    }
+  };
 
   const filtered = vault.filter(c=>{
     const q = vaultSearchQuery.toLowerCase();
@@ -365,7 +488,7 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery}){
               ))}
             </div>
             <input value={tagInput} onChange={e=>setTagInput(e.target.value)} placeholder="rain, window, city... (enter)" style={{...S.input,fontSize:12}}
-              onKeyDown={e=>{if((e.key==="Enter"||e.key===",")&&tagInput.trim()){updateForm({visualTags:[...(form.visualTags||[]),tagInput.trim()]});setTagInput("");}}}/>
+              onKeyDown={e=>{if(e.key==="Enter"||e.key===","){ e.preventDefault(); if(tagInput.trim()){updateForm({visualTags:[...(form.visualTags||[]),tagInput.trim()]});setTagInput("");} }}}/>
           </div>
           <div>
             <span style={S.label}>emotion tags</span>
@@ -377,7 +500,7 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery}){
               ))}
             </div>
             <input value={eTagInput} onChange={e=>setETagInput(e.target.value)} placeholder="heavy, quiet, hopeful... (enter)" style={{...S.input,fontSize:12}}
-              onKeyDown={e=>{if((e.key==="Enter"||e.key===",")&&eTagInput.trim()){updateForm({emotionTags:[...(form.emotionTags||[]),eTagInput.trim()]});setETagInput("");}}}/>
+              onKeyDown={e=>{if(e.key==="Enter"||e.key===","){ e.preventDefault(); if(eTagInput.trim()){updateForm({emotionTags:[...(form.emotionTags||[]),eTagInput.trim()]});setETagInput("");} }}}/>
           </div>
         </div>
         <div style={S.grid2}>
@@ -607,30 +730,165 @@ const getSuggestedShotsForMood = (mood) => {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────────
 export default function App(){
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+
   const [tab,      setTabRaw]    = useState(()=>load(STORAGE.tab,"planner"));
-  const [posts,    setPosts]     = useState(()=>load(STORAGE.posts,  SEED_POSTS));
-  const [dumps,    setDumps]     = useState(()=>load(STORAGE.dumps,  SEED_DUMPS));
-  const [shoots,   setShoots]    = useState(()=>load(STORAGE.shoots, SEED_SHOOTS));
-  const [vault,    setVaultRaw]  = useState(()=>load(STORAGE.vault,  SEED_VAULT));
-  const [journal,  setJournal]   = useState(()=>load(STORAGE.journal, SEED_JOURNAL));
-  const [collabs,  setCollabs]   = useState(()=>load(STORAGE.collabs, SEED_COLLABS));
+  const [posts,    setPosts]     = useState([]);
+  const [dumps,    setDumps]     = useState([]);
+  const [shoots,   setShoots]    = useState([]);
+  const [vault,    setVault]     = useState([]);
+  const [journal,  setJournal]   = useState([]);
+  const [collabs,  setCollabs]   = useState([]);
   const [theme,    setThemeRaw]  = useState(()=>load(STORAGE.theme,"light"));
   const [activeNiche, setActiveNiche] = useState(()=>load(STORAGE.niche, NICHES[0].id));
   
   const [shootFilter,setShootFilter] = useState(()=>load(STORAGE.shootFilter,"upcoming"));
   const [vaultSearchQuery, setVaultSearchQuery] = useState("");
 
+  // Toast and Shoot Checklist States
+  const [toast, setToast] = useState(null);
+  const [shootMode, setShootMode] = useState(false);
+  const [completedShots, setCompletedShots] = useState({});
+
+  // Local Editing & Dirty States
+  const [localPost, setLocalPost] = useState(null);
+  const [savingPost, setSavingPost] = useState(false);
+  const [postIsDirty, setPostIsDirty] = useState(false);
+
+  const [localDump, setLocalDump] = useState(null);
+  const [savingDump, setSavingDump] = useState(false);
+  const [dumpIsDirty, setDumpIsDirty] = useState(false);
+
+  const [localShoot, setLocalShoot] = useState(null);
+  const [savingShoot, setSavingShoot] = useState(false);
+  const [shootIsDirty, setShootIsDirty] = useState(false);
+
+  const [savingCollab, setSavingCollab] = useState(false);
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+  };
+
+  // Enforce credits check on frontend
+  const useCredit = () => {
+    if (!user) return false;
+    if (user.credits <= 0) {
+      showToast("⚠️ Out of credits! Please top up your account.", "error");
+      return false;
+    }
+    useAuthStore.setState({
+      user: { ...user, credits: Math.max(0, user.credits - 1) }
+    });
+    return true;
+  };
+
   const setTab   = v => { setTabRaw(v);   save(STORAGE.tab,v); };
-  const setVault = fn => setVaultRaw(prev=>{ const next=typeof fn==="function"?fn(prev):fn; save(STORAGE.vault,next); return next; });
   const setTheme = v => { setThemeRaw(v); save(STORAGE.theme, v); };
 
-  useEffect(()=>{ save(STORAGE.posts,  posts);  },[posts]);
-  useEffect(()=>{ save(STORAGE.dumps,  dumps);  },[dumps]);
-  useEffect(()=>{ save(STORAGE.shoots, shoots); },[shoots]);
+  // Selection state — declared BEFORE effects that depend on them
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [selectedShootId, setSelectedShootId] = useState(null);
+  const [activeDumpId, setActiveDumpId] = useState(() => load(STORAGE.dumps, SEED_DUMPS)[0]?.id || null);
+
+  // Reel breakdown — declared here so it's available in init() effect below
+  const [reelBreakdown, setReelBreakdown] = useState(null);
+
+
+  useEffect(() => {
+    async function init() {
+      try {
+        console.log("[App] Fetching initial user data...");
+        const serverDumps = await apiGetDumps();
+        if (serverDumps && serverDumps.length > 0) {
+          setDumps(serverDumps);
+          setActiveDumpId(serverDumps[0].id);
+        }
+
+        const serverPosts = await apiGetPosts();
+        if (serverPosts && serverPosts.length > 0) {
+          setPosts(serverPosts);
+        }
+
+        const serverCollabs = await apiGetCollabs();
+        if (serverCollabs && serverCollabs.length > 0) {
+          setCollabs(serverCollabs);
+        }
+
+        const serverShoots = await apiGetShoots();
+        if (serverShoots && serverShoots.length > 0) {
+          setShoots(serverShoots);
+        }
+
+        const serverBreakdowns = await apiGetBreakdowns();
+        if (serverBreakdowns && serverBreakdowns.length > 0) {
+          setReelBreakdown(serverBreakdowns[0]);
+        }
+
+        const serverBRolls = await apiGetBRolls();
+        if (serverBRolls) {
+          setVault(serverBRolls);
+        }
+
+        const serverJournal = await apiGetJournalEntries();
+        if (serverJournal) {
+          setJournal(serverJournal);
+          if (serverJournal.length > 0) {
+            setSelectedJournalId(prev => prev || serverJournal[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("[App] Hydration failed:", err);
+      }
+    }
+    init();
+  }, []);
+
+  // Synchronize selection changes into local edit states
+  useEffect(() => {
+    if (selectedPost) {
+      setLocalPost(JSON.parse(JSON.stringify(selectedPost)));
+      setPostIsDirty(false);
+    } else {
+      setLocalPost(null);
+      setPostIsDirty(false);
+    }
+  }, [selectedPost]);
+
+  useEffect(() => {
+    const dump = dumps.find(d => d.id === activeDumpId);
+    if (dump) {
+      // Only reset localDump when the selected dump changes (not on every dumps update)
+      // This prevents in-progress edits being stomped when updateDump triggers setDumps
+      setLocalDump(prev => {
+        // If we're already editing this dump (prev exists and same id), keep edits
+        if (prev && prev.id === dump.id) return prev;
+        return JSON.parse(JSON.stringify(dump));
+      });
+      setDumpIsDirty(prev => (prev && dump.id === activeDumpId) ? prev : false);
+    } else {
+      setLocalDump(null);
+      setDumpIsDirty(false);
+    }
+  }, [activeDumpId, dumps]);
+
+  useEffect(() => {
+    const shoot = shoots.find(s => s.id === selectedShootId);
+    if (shoot) {
+      setLocalShoot(prev => {
+        if (prev && prev.id === shoot.id) return prev;
+        return JSON.parse(JSON.stringify(shoot));
+      });
+      setShootIsDirty(prev => (prev && shoot.id === selectedShootId) ? prev : false);
+    } else {
+      setLocalShoot(null);
+      setShootIsDirty(false);
+    }
+  }, [selectedShootId, shoots]);
+
   useEffect(()=>{ save(STORAGE.shootFilter,shootFilter); },[shootFilter]);
-  useEffect(()=>{ save(STORAGE.journal, journal); },[journal]);
-  useEffect(()=>{ save(STORAGE.collabs, collabs); },[collabs]);
   useEffect(()=>{ save(STORAGE.niche, activeNiche); },[activeNiche]);
+  useEffect(()=>{ setAiTrends([]); }, [activeNiche]);
 
   useEffect(()=>{
     document.documentElement.setAttribute("data-theme", theme);
@@ -642,9 +900,7 @@ export default function App(){
   const [calFade,  setCalFade]   = useState(false);
   const calAnimRef = useRef(false);
 
-  const [selectedPost,    setSelectedPost]    = useState(null);
-  const [selectedShootId, setSelectedShootId] = useState(null);
-  const [activeDumpId,    setActiveDumpId]    = useState(()=>load(STORAGE.dumps,SEED_DUMPS)[0]?.id||null);
+
   const [newDumpTitle,    setNewDumpTitle]     = useState("");
   const [editingDump,     setEditingDump]      = useState(false);
   const [shootSlot,       setShootSlot]        = useState("morning");
@@ -679,6 +935,8 @@ export default function App(){
   const [scouting, setScouting] = useState(false);
   const [scoutProgress, setScoutProgress] = useState(0);
   const [scoutLogs, setScoutLogs] = useState([]);
+  const [transcriptText, setTranscriptText] = useState("");
+  const [parsingTranscript, setParsingTranscript] = useState(false);
   const [aiTrends, setAiTrends] = useState(() => MOCK_TRENDS_DATA[activeNiche] || []);
   const [aiChatQuery, setAiChatQuery] = useState("");
   const [aiChatResponses, setAiChatResponses] = useState([
@@ -690,6 +948,7 @@ export default function App(){
   const [aiGeneratingJournal, setAiGeneratingJournal] = useState(false);
   const [aiGeneratingTags, setAiGeneratingTags] = useState(false);
   const [aiGeneratingPostIdeas, setAiGeneratingPostIdeas] = useState(false);
+  const [aiGeneratingCaptions, setAiGeneratingCaptions] = useState(false);
   const [discoveringBrands, setDiscoveringBrands] = useState(false);
   const [aiEstimatingCollab, setAiEstimatingCollab] = useState(false);
   const [estimationStep, setEstimationStep] = useState("");
@@ -697,54 +956,208 @@ export default function App(){
   const [pitchUrl, setPitchUrl] = useState("");
   const [reelUrl, setReelUrl] = useState("");
   const [analyzingReel, setAnalyzingReel] = useState(false);
-  const [reelBreakdown, setReelBreakdown] = useState(null);
+  // reelBreakdown is declared earlier (above the init effect) to avoid TDZ
 
-  const generatePostIdeasAI = () => {
+  const generatePostIdeasAI = async () => {
     if (!selectedPost) return;
+    if (!useCredit()) return;
     setAiGeneratingPostIdeas(true);
-    setTimeout(() => {
-      updatePost(selectedPost.id, {
-        caption: "✨ Thumbnail Idea: Split screen showing 'before' (messy) and 'after' (aesthetic) with text overlay 'The Reset'.\n\n✨ Hooks:\n1. 'If your life feels chaotic, do this 1-hour reset...'\n2. 'Stop scrolling. It's time for a Sunday reset.'\n3. 'The only productivity hack you actually need.'\n\n" + (selectedPost.caption || "")
-      });
+
+    try {
+      console.log(`[App] Triggering hooks generation for post ${selectedPost.id}...`);
+      const job = await apiGenerateHooks(selectedPost.id);
+      console.log(`[App] Created AI Job for hooks:`, job);
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiGetJobStatus(job.id);
+          console.log(`[App] AI Job ${job.id} status: ${statusRes.status}`);
+
+          if (statusRes.status === "COMPLETED") {
+            clearInterval(pollInterval);
+            setAiGeneratingPostIdeas(false);
+
+            const updatedPosts = await apiGetPosts();
+            setPosts(updatedPosts);
+            const freshPost = updatedPosts.find(p => p.id === selectedPost.id);
+            if (freshPost) {
+              setSelectedPost(freshPost);
+            }
+          } else if (statusRes.status === "FAILED") {
+            clearInterval(pollInterval);
+            setAiGeneratingPostIdeas(false);
+            showToast("Hook generation failed.", "error");
+          }
+        } catch (pollErr) {
+          console.error(`[App] Error polling job status:`, pollErr);
+          clearInterval(pollInterval);
+          setAiGeneratingPostIdeas(false);
+        }
+      }, 500);
+    } catch (err) {
+      console.error("[App] Failed to start hook generation:", err);
       setAiGeneratingPostIdeas(false);
-    }, 1500);
+      showToast("Failed to start hook generation job.", "error");
+    }
   };
 
-  const analyzeReelAI = () => {
+  const generateCaptionsAI = async () => {
+    if (!selectedPost) return;
+    if (!useCredit()) return;
+    setAiGeneratingCaptions(true);
+
+    try {
+      console.log(`[App] Triggering captions generation for post ${selectedPost.id}...`);
+      const job = await apiGenerateCaptions(selectedPost.id);
+      console.log(`[App] Created AI Job for captions:`, job);
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiGetJobStatus(job.id);
+          console.log(`[App] AI Job ${job.id} status: ${statusRes.status}`);
+
+          if (statusRes.status === "COMPLETED") {
+            clearInterval(pollInterval);
+            setAiGeneratingCaptions(false);
+
+            const updatedPosts = await apiGetPosts();
+            setPosts(updatedPosts);
+            const freshPost = updatedPosts.find(p => p.id === selectedPost.id);
+            if (freshPost) {
+              setSelectedPost(freshPost);
+            }
+          } else if (statusRes.status === "FAILED") {
+            clearInterval(pollInterval);
+            setAiGeneratingCaptions(false);
+            showToast("Caption generation failed.", "error");
+          }
+        } catch (pollErr) {
+          console.error(`[App] Error polling job status:`, pollErr);
+          clearInterval(pollInterval);
+          setAiGeneratingCaptions(false);
+        }
+      }, 500);
+    } catch (err) {
+      console.error("[App] Failed to start caption generation:", err);
+      setAiGeneratingCaptions(false);
+      showToast("Failed to start caption generation job.", "error");
+    }
+  };
+
+  const analyzeReelAI = async () => {
     if (!reelUrl.trim()) return;
+    if (!useCredit()) return;
     setAnalyzingReel(true);
-    setTimeout(() => {
-      setReelBreakdown({
-        insights: ["Retention spike at 0:03 due to sudden lighting change.", "Audio is pitched up +4 semitones to avoid copyright and increase energy.", "Fast 0.5s cuts for the first 2 seconds."],
-        steps: ["1. Shoot a 3-second wide shot establishing the space.", "2. Shoot 4 quick close-ups of the subject.", "3. Overlay text: 'Wait for it...' at 0:01.", "4. Sync the beat drop with the lighting change."]
-      });
+    try {
+      console.log(`[App] Extracting metadata & breaking down reel: ${reelUrl}...`);
+      const res = await apiBreakdownReel(reelUrl);
+      setReelBreakdown(res);
+      showToast("Reel analyzed successfully!");
+    } catch (err) {
+      console.error("[App] Failed to break down reel:", err);
+      showToast("Failed to break down reel.", "error");
+    } finally {
       setAnalyzingReel(false);
-    }, 2000);
+    }
   };
 
-  const saveBreakdownToDump = () => {
+  const handleDeleteBreakdown = async () => {
+    if (!reelBreakdown) return;
+    if (!confirm("Are you sure you want to delete this virality report?")) return;
+    try {
+      await apiDeleteBreakdown(reelBreakdown.id);
+      setReelBreakdown(null);
+      showToast("Virality report deleted.");
+    } catch (err) {
+      console.error("Failed to delete virality report:", err);
+      showToast("Failed to delete report.", "error");
+    }
+  };
+
+  const handleParseTranscript = async () => {
+    if (!transcriptText.trim()) return;
+    if (!useCredit()) return;
+
+    setParsingTranscript(true);
+    try {
+      const lines = transcriptText.split("\n").filter(Boolean);
+      const title = `Parsed Script Pacing: ${lines[0]?.slice(0, 30) || "Reference"}`;
+      const text = `--- TRANSCRIPT PACING STRUCTURE ---\n\n[HOOK SECTION]\n"${lines[0] || "Hook line placeholder"}"\n\n[BODY ANALYSIS]\n${lines.slice(1, -1).map((l, i) => `Beat ${i+1}: ${l}`).slice(0, 4).join("\n") || "Content beats go here."}\n\n[CTA / OUTRO]\n"${lines[lines.length - 1] || "CTA line placeholder"}"\n\nGenerated from reference transcript.`;
+
+      const nd = await apiCreateDump({
+        title,
+        text,
+        mood: "reflective",
+        ts: "just now",
+        archived: false
+      });
+      setDumps(ds => [nd, ...ds]);
+      setActiveDumpId(nd.id);
+      setTranscriptText("");
+      showToast("Transcript pacing dump created!");
+      setTab("dump");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to parse transcript.", "error");
+    } finally {
+      setParsingTranscript(false);
+    }
+  };
+
+  const handleRecreateTrend = async (trend) => {
+    try {
+      const newPost = await apiCreatePost({
+        title: `Recreate: ${trend.title}`,
+        date: todayStr,
+        type: "reel",
+        status: "draft",
+        mood: "cinematic",
+        caption: `--- PACING STRUCTURE ---\nHook: ${trend.hook}\nAction Plan: ${trend.keyTakeaway}\nWhy It Worked: ${trend.whyItWorked}`,
+        hashtags: trend.visualTags.map(t => `#${t}`).join(" "),
+        shootId: null
+      });
+      setPosts(prev => [...prev, newPost]);
+      setSelectedPost(newPost);
+      setTab("planner");
+      showToast("Trend template recreated in Planner!");
+      return newPost;
+    } catch (err) {
+      console.error("Failed to recreate trend:", err);
+      showToast("Failed to recreate trend.", "error");
+    }
+  };
+
+  const saveBreakdownToDump = async () => {
     if (!reelBreakdown) return;
     const nicheObj = NICHES.find(n => n.id === activeNiche);
-    const nd = {
-      id: Date.now(),
-      title: `Reel Idea: ${nicheObj ? nicheObj.label : "General"}`,
-      text: `--- INSIGHTS ---\n${reelBreakdown.insights.map(i => `• ${i}`).join('\n')}\n\n--- RECREATION GUIDE ---\n${reelBreakdown.steps.map(s => `• ${s}`).join('\n')}`,
-      mood: "cinematic",
-      ts: "just now",
-      archived: false
-    };
-    setDumps(ds => [nd, ...ds]);
-    setActiveDumpId(nd.id);
+    const title = `Reel Idea: ${nicheObj ? nicheObj.label : "General"}`;
+    const text = `--- INSIGHTS ---\n${reelBreakdown.insights.map(i => `• ${i}`).join('\n')}\n\n--- RECREATION GUIDE ---\n${reelBreakdown.steps.map(s => `• ${s}`).join('\n')}`;
+    try {
+      const nd = await apiCreateDump({ title, text, mood: "cinematic", ts: "just now", archived: false });
+      setDumps(ds => [nd, ...ds]);
+      setActiveDumpId(nd.id);
+    } catch (err) {
+      console.error("Failed to save breakdown to server dump:", err);
+      const nd = {
+        id: String(Date.now()),
+        title,
+        text,
+        mood: "cinematic",
+        ts: "just now",
+        archived: false
+      };
+      setDumps(ds => [nd, ...ds]);
+      setActiveDumpId(nd.id);
+    }
     setTab("dump");
   };
 
-  const saveBreakdownToPlanner = () => {
+  const saveBreakdownToPlanner = async () => {
     if (!reelBreakdown) return;
     const nicheObj = NICHES.find(n => n.id === activeNiche);
-    const np = {
-      id: Date.now(),
-      date: todayStr,
+    const postData = {
       title: `Reel Breakdown Idea - ${nicheObj ? nicheObj.label : "Reel"}`,
+      date: todayStr,
       type: "reel",
       status: "draft",
       mood: "cinematic",
@@ -752,12 +1165,12 @@ export default function App(){
       hashtags: "",
       shootId: null
     };
-    setPosts(ps => [...ps, np]);
+    const np = await createNewPost(postData);
     setSelectedPost(np);
     setTab("planner");
   };
 
-  const saveBreakdownToShoot = () => {
+  const saveBreakdownToShoot = async () => {
     if (!reelBreakdown) return;
     const nicheObj = NICHES.find(n => n.id === activeNiche);
     const morningShots = [];
@@ -777,8 +1190,7 @@ export default function App(){
       else if (idx === 1) afternoonShots.push(shotObj);
       else eveningShots.push(shotObj);
     });
-    const ns = {
-      id: Date.now(),
+    const nsData = {
       name: `Reel Breakdown Shoot - ${nicheObj ? nicheObj.label : "Session"}`,
       shootDate: todayStr,
       postId: null,
@@ -788,230 +1200,146 @@ export default function App(){
         evening: eveningShots
       }
     };
-    setShoots(ss => [...ss, ns]);
-    setSelectedShootId(ns.id);
-    setTab("shoot");
+    try {
+      const saved = await apiCreateShoot(nsData);
+      setShoots(ss => [...ss, saved]);
+      setSelectedShootId(saved.id);
+      setTab("shoot");
+    } catch (err) {
+      console.error("Failed to save shoot breakdown to server:", err);
+      const fallback = { ...nsData, id: String(Date.now()) };
+      setShoots(ss => [...ss, fallback]);
+      setSelectedShootId(fallback.id);
+      setTab("shoot");
+    }
   };
 
-  const discoverBrandsAI = () => {
+  const discoverBrandsAI = async () => {
+    if (!useCredit()) return;
     setDiscoveringBrands(true);
-    setTimeout(() => {
-      let mockLeads = [];
-      if (activeNiche === "minimalist-productivity") {
-        mockLeads = [
-          {
-            id: Date.now(),
-            brand: "FocusFlow Timers",
-            contactName: "Alex Rivera",
-            email: "collabs@focusflow.io",
-            platform: "Instagram",
-            status: "dream brand",
-            quote: "400",
-            negotiatedAmount: "400",
-            deliverables: [{ id: Date.now() + 1, text: "1x Reel showing desk productivity routine", type: "reel", completed: false }],
-            dueDate: "",
-            paymentStatus: "unpaid",
-            notes: "Discovered via AI based on your minimalist productivity niche. Brand matches your desk aesthetic.",
-            pitchDraft: "",
-            followUpDraft: "",
-            createdAt: todayStr
-          },
-          {
-            id: Date.now() + 2,
-            brand: "Mono Journals",
-            contactName: "Clara Tanaka",
-            email: "partners@monojournals.com",
-            platform: "Instagram",
-            status: "dream brand",
-            quote: "300",
-            negotiatedAmount: "300",
-            deliverables: [{ id: Date.now() + 3, text: "1x Carousel detailing planning systems", type: "carousel", completed: false }],
-            dueDate: "",
-            paymentStatus: "unpaid",
-            notes: "AI discovered: High-quality minimalist notebook brand looking for creators focused on systems.",
-            pitchDraft: "",
-            followUpDraft: "",
-            createdAt: todayStr
+    try {
+      console.log(`[App] Triggering brand discovery for niche: ${activeNiche}...`);
+      const job = await apiDiscoverBrands(activeNiche);
+      
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiGetJobStatus(job.id);
+          if (statusRes.status === "COMPLETED") {
+            clearInterval(pollInterval);
+            setDiscoveringBrands(false);
+            const freshCollabs = await apiGetCollabs();
+            setCollabs(freshCollabs);
+            if (freshCollabs.length > 0) {
+              setSelectedCollabId(freshCollabs[0].id);
+            }
+            showToast("AI discovered new brand leads!");
+          } else if (statusRes.status === "FAILED") {
+            clearInterval(pollInterval);
+            setDiscoveringBrands(false);
+            showToast("Brand discovery failed.", "error");
           }
-        ];
-      } else if (activeNiche === "aesthetic-lifestyle") {
-        mockLeads = [
-          {
-            id: Date.now(),
-            brand: "Norse Linen Co.",
-            contactName: "Freja Bak",
-            email: "pr@norselinen.co",
-            platform: "Instagram",
-            status: "dream brand",
-            quote: "500",
-            negotiatedAmount: "500",
-            deliverables: [{ id: Date.now() + 1, text: "1x Reel morning routine showcase", type: "reel", completed: false }],
-            dueDate: "",
-            paymentStatus: "unpaid",
-            notes: "AI match: Aesthetic neutral tone linens. High alignment with your coffee steam / morning light B-roll style.",
-            pitchDraft: "",
-            followUpDraft: "",
-            createdAt: todayStr
-          },
-          {
-            id: Date.now() + 2,
-            brand: "Melt & Mist Candles",
-            contactName: "Julian Vance",
-            email: "hello@meltandmist.com",
-            platform: "Instagram",
-            status: "dream brand",
-            quote: "250",
-            negotiatedAmount: "250",
-            deliverables: [{ id: Date.now() + 3, text: "2x Stories with aesthetic unboxing", type: "story", completed: false }],
-            dueDate: "",
-            paymentStatus: "unpaid",
-            notes: "AI match: Artisanal slow-living candle brand. Perfect match for cozy evening aesthetics.",
-            pitchDraft: "",
-            followUpDraft: "",
-            createdAt: todayStr
-          }
-        ];
-      } else {
-        mockLeads = [
-          {
-            id: Date.now(),
-            brand: "StackDev Keyboards",
-            contactName: "Toby Mercer",
-            email: "collabs@stackdev.io",
-            platform: "Instagram",
-            status: "dream brand",
-            quote: "600",
-            negotiatedAmount: "600",
-            deliverables: [{ id: Date.now() + 1, text: "1x Reel building desk setup integration", type: "reel", completed: false }],
-            dueDate: "",
-            paymentStatus: "unpaid",
-            notes: "AI match: Premium mechanical keyboard builder. Highly matching build-in-public process.",
-            pitchDraft: "",
-            followUpDraft: "",
-            createdAt: todayStr
-          },
-          {
-            id: Date.now() + 2,
-            brand: "GlassNote SaaS",
-            contactName: "Evelyn Ross",
-            email: "growth@glassnote.app",
-            platform: "Instagram",
-            status: "dream brand",
-            quote: "450",
-            negotiatedAmount: "450",
-            deliverables: [{ id: Date.now() + 3, text: "1x Reel code/work loop review", type: "reel", completed: false }],
-            dueDate: "",
-            paymentStatus: "unpaid",
-            notes: "AI match: Glassmorphic productivity editor tool. Fits the 'tired but motivated' mindset of your digital builder page.",
-            pitchDraft: "",
-            followUpDraft: "",
-            createdAt: todayStr
-          }
-        ];
-      }
-
-      setCollabs(prev => [...mockLeads, ...prev]);
+        } catch (pollErr) {
+          console.error(pollErr);
+          clearInterval(pollInterval);
+          setDiscoveringBrands(false);
+        }
+      }, 500);
+    } catch (err) {
+      console.error(err);
       setDiscoveringBrands(false);
-      setSelectedCollabId(mockLeads[0].id);
-    }, 1500);
+      showToast("Failed to start brand discovery.", "error");
+    }
   };
 
-  const analyzeAndEstimateCollabAI = () => {
+  const analyzeAndEstimateCollabAI = async () => {
     if (!pitchUrl.trim() || !selectedCollabId) return;
+    if (!useCredit()) return;
     setAiEstimatingCollab(true);
+    setEstimationStep("Submitting estimation task to queue...");
     
-    setEstimationStep("Scraping brand profile feed...");
-    setTimeout(() => {
-      setEstimationStep("Analyzing brand aesthetics & visual styling...");
-      setTimeout(() => {
-        setEstimationStep("Evaluating content engagement & creator alignment...");
-        setTimeout(() => {
-          setEstimationStep("Calculating optimal rate recommendation...");
-          setTimeout(() => {
-            const activeCollab = collabs.find(x => x.id === selectedCollabId);
-            if (!activeCollab) return;
+    try {
+      const activeCollab = collabs.find(x => x.id === selectedCollabId);
+      if (!activeCollab) return;
 
-            let estimatedAmount = "15000";
-            let suggestedDels = [];
-            let brandAesthetic = "cozy warm textures";
-
-            if (activeCollab.brand.toLowerCase().includes("linen") || activeCollab.brand.toLowerCase().includes("candle")) {
-              estimatedAmount = "12500";
-              suggestedDels = [
-                { id: Date.now() + 1, text: "1x Cinematic morning vlog Reel featuring brand", type: "reel", completed: false },
-                { id: Date.now() + 2, text: "2x Aesthetic Story reviews with product sticker", type: "story", completed: false }
-              ];
-              brandAesthetic = "slow living, organic neutral tones, and natural lighting";
-            } else if (activeCollab.brand.toLowerCase().includes("keyboard") || activeCollab.brand.toLowerCase().includes("tech") || activeCollab.brand.toLowerCase().includes("timer") || activeCollab.brand.toLowerCase().includes("journal") || activeCollab.brand.toLowerCase().includes("pad")) {
-              estimatedAmount = "18000";
-              suggestedDels = [
-                { id: Date.now() + 1, text: "1x High-retention workspace setup Reel", type: "reel", completed: false },
-                { id: Date.now() + 2, text: "1x Carousel detailing coding/design planning system", type: "carousel", completed: false }
-              ];
-              brandAesthetic = "minimalist desk setup, clean typography, and task workflows";
-            } else {
-              estimatedAmount = "14000";
-              suggestedDels = [
-                { id: Date.now() + 1, text: "1x Aesthetic B-Roll review Reel", type: "reel", completed: false },
-                { id: Date.now() + 2, text: "2x Daily routine integration Stories", type: "story", completed: false }
-              ];
-              brandAesthetic = "cozy creative environment, soft coffee steam, and everyday rituals";
-            }
-
-            const rates = calculateCollabRates(suggestedDels);
-
-            const pitchText = `Hi ${activeCollab.contactName || "Team"} at ${activeCollab.brand},\n\nI just completed an aesthetic assessment of your profile via ${pitchUrl}.\n\nBased on your focus on ${brandAesthetic}, I have structured a dedicated showcase campaign that aligns perfectly with my audience:\n- 1x High-retention Reel mapping your product into a slow daily routine.\n- Supporting Stories showcasing close-ups of product textures.\n\nRecommended rate package for this high-alignment concept: ₹${rates.total}.\n\nLet me know if you would like me to prepare a custom moodboard!\n\nBest,\nMe`;
-
-            setCollabs(prev => prev.map(c => {
-              if (c.id === selectedCollabId) {
-                return {
-                  ...c,
-                  quote: rates.total,
-                  negotiatedAmount: rates.total,
-                  deliverables: suggestedDels,
-                  pitchDraft: pitchText,
-                  notes: `AI Strategy Scan (${new Date().toLocaleDateString()}): Recommended rate ₹${rates.total} based on high aesthetic fit with ${brandAesthetic}.`
-                };
-              }
-              return c;
-            }));
-
-            setActivePitchTemplate("aiDraft");
+      const job = await apiEstimateCollab({
+        collabId: selectedCollabId,
+        brandName: activeCollab.brand,
+        profileUrl: pitchUrl,
+        niche: activeNiche
+      });
+      
+      setEstimationStep("Processing brand layout analysis...");
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiGetJobStatus(job.id);
+          if (statusRes.status === "COMPLETED") {
+            clearInterval(pollInterval);
             setAiEstimatingCollab(false);
             setEstimationStep("");
-          }, 600);
-        }, 600);
-      }, 600);
-    }, 600);
+            const freshCollabs = await apiGetCollabs();
+            setCollabs(freshCollabs);
+            showToast("Collab rates estimated and pitch drafted!");
+          } else if (statusRes.status === "FAILED") {
+            clearInterval(pollInterval);
+            setAiEstimatingCollab(false);
+            setEstimationStep("");
+            showToast("Collab estimation failed.", "error");
+          }
+        } catch (pollErr) {
+          console.error(pollErr);
+          clearInterval(pollInterval);
+          setAiEstimatingCollab(false);
+          setEstimationStep("");
+        }
+      }, 500);
+    } catch (err) {
+      console.error(err);
+      setAiEstimatingCollab(false);
+      setEstimationStep("");
+      showToast("Failed to start collab estimate job.", "error");
+    }
   };
 
-  const generatePitchAI = () => {
+  const generatePitchAI = async () => {
+    if (!pitchUrl.trim() || !selectedCollabId) return;
+    if (!useCredit()) return;
     setAiGeneratingPitch(true);
-    setTimeout(() => {
-      const activeCollab = collabs.find(x => x.id === selectedCollabId) || null;
-      const brandName = addingCollab ? newCollab.brand : (activeCollab ? activeCollab.brand : "Aesthetic Desk Co.");
-      const platformName = addingCollab ? newCollab.platform : (activeCollab ? activeCollab.platform : "Instagram");
-      const contactPerson = addingCollab ? newCollab.contactName : (activeCollab ? activeCollab.contactName : "Team");
-      const rateVal = addingCollab ? (newCollab.negotiatedAmount || newCollab.quote || "500") : (activeCollab ? (activeCollab.negotiatedAmount || activeCollab.quote || "500") : "500");
+    try {
+      const activeCollab = collabs.find(x => x.id === selectedCollabId);
+      if (!activeCollab) return;
 
-      const generatedDraft = `Hi ${contactPerson || "Team"} at ${brandName},\n\nI've been analyzing your recent campaigns on ${platformName || "Instagram"} via ${pitchUrl || "profile"}.\n\nHere is a concept that fits your aesthetic perfectly:\n- A high-retention cinematic showcase showing a slow lifestyle routine.\n- Captivating overlays highlighting your product benefits in natural lighting.\n\nI'd love to partner and produce this for you. Standard rate for this package is ₹${rateVal}.\n\nLet me know if you'd like to see the draft script!\n\nWarmly,\nMe`;
-
-      if (addingCollab) {
-        setNewCollab(prev => ({
-          ...prev,
-          pitchDraft: generatedDraft
-        }));
-      } else if (selectedCollabId) {
-        setCollabs(prev => prev.map(item => {
-          if (item.id === selectedCollabId) {
-            return { ...item, pitchDraft: generatedDraft };
+      const job = await apiEstimateCollab({
+        collabId: selectedCollabId,
+        brandName: activeCollab.brand,
+        profileUrl: pitchUrl,
+        niche: activeNiche
+      });
+      
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiGetJobStatus(job.id);
+          if (statusRes.status === "COMPLETED") {
+            clearInterval(pollInterval);
+            setAiGeneratingPitch(false);
+            const freshCollabs = await apiGetCollabs();
+            setCollabs(freshCollabs);
+            showToast("AI Pitch Draft generated!");
+          } else if (statusRes.status === "FAILED") {
+            clearInterval(pollInterval);
+            setAiGeneratingPitch(false);
+            showToast("Failed to generate pitch draft.", "error");
           }
-          return item;
-        }));
-      }
-      setActivePitchTemplate("aiDraft");
+        } catch (pollErr) {
+          console.error(pollErr);
+          clearInterval(pollInterval);
+          setAiGeneratingPitch(false);
+        }
+      }, 500);
+    } catch (err) {
+      console.error(err);
       setAiGeneratingPitch(false);
-    }, 1500);
+      showToast("Failed to start pitch draft job.", "error");
+    }
   };
 
   const generateJournalAI = () => {
@@ -1029,36 +1357,83 @@ export default function App(){
     }, 1500);
   };
 
-  const rewriteDumpAI = (id) => {
+  const createNewDump = async (title, mood = "chaotic") => {
+    try {
+      const nd = await apiCreateDump({ title, text: "", mood, ts: "just now", archived: false });
+      setDumps(ds => [nd, ...ds]);
+      setActiveDumpId(nd.id);
+      return nd;
+    } catch (err) {
+      console.error("Failed to create dump on server:", err);
+      const nd = { id: String(Date.now()), title, text: "", mood, ts: "just now", archived: false };
+      setDumps(ds => [nd, ...ds]);
+      setActiveDumpId(nd.id);
+      return nd;
+    }
+  };
+
+  const createNewPost = async (postData) => {
+    try {
+      const np = await apiCreatePost({
+        title: postData.title || "untitled post",
+        date: postData.date || todayStr,
+        type: postData.type || "reel",
+        status: postData.status || "draft",
+        mood: postData.mood || "soft",
+        caption: postData.caption || "",
+        hashtags: postData.hashtags || "",
+        shootId: postData.shootId || null
+      });
+      setPosts(ps => [...ps, np]);
+      return np;
+    } catch (err) {
+      console.error("Failed to create post on server:", err);
+      const nd = { id: String(Date.now()), ...postData };
+      setPosts(ps => [...ps, nd]);
+      return nd;
+    }
+  };
+
+  const rewriteDumpAI = async (id) => {
     const dump = dumps.find(d => d.id === id);
     if (!dump) return;
+    if (!useCredit()) return;
     
     setAiRewritingDump(true);
     
-    setTimeout(() => {
-      let rewrittenText = "";
-      const rawText = dump.text.trim();
+    try {
+      console.log(`[App] Triggering rewrite for dump ${id}...`);
+      const job = await apiRewriteDump(id);
+      console.log(`[App] Created AI Job:`, job);
 
-      if (rawText.length > 0) {
-        rewrittenText = `✨ POLISHED REWRITE ✨\n\nOriginal Idea: ${dump.title}\n\n[HOOK DETAILS]\n1. "They say consistency is key, but here is the raw reality..."\n2. "The secret to rebuilding your routine without burning out..."\n\n[STRUCTURED CONTENT GUIDE]\n- 0:00 - 0:03: Start with a visual hook showing a raw close-up (e.g. coffee steam or workspace details).\n- 0:03 - 0:10: Transition to secondary action footage with a calm voiceover reading the narrative outline.\n- 0:10 - 0:15: End with a clean call-to-action showing a static text overlay.\n\n[SCRIPT OUTLINE]\n"${rawText}"\n\n[SUGGESTED CAPTION]\nSometimes the best work happens in the quiet moments before the rest of the world wakes up. Here is a look at the system I'm building step by step.\n\n#creatorlife #productivity #slowliving`;
-      } else {
-        rewrittenText = `✨ CREATED FROM SCANDINAVIAN KINFOLK STYLE ✨\n\nTitle: Aesthetic Workspace Routine\n\n[HOOK]\n"My 6 AM setup ritual — how I design space for slow focus."\n\n[VISUAL STEPS]\n1. Close-up of typing on keyboard in warm lamp lighting.\n2. Panning shot of a green desk pad and a hot coffee mug.\n3. Slow tracking shot of setting up the schedule book.\n\n[SPEECH / TEXT OVERLAY]\n"Productivity isn't about doing more. It is about creating space for what matters. Here is my system today."`;
-      }
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiGetJobStatus(job.id);
+          console.log(`[App] AI Job ${job.id} status: ${statusRes.status}`);
 
-      setDumps(ds => ds.map(d => {
-        if (d.id === id) {
-          return {
-            ...d,
-            title: `✨ AI: ${d.title.replace(/^✨ AI:\s*/, "") || "Aesthetic Vlog Idea"}`,
-            text: rewrittenText,
-            ts: "just now"
-          };
+          if (statusRes.status === "COMPLETED") {
+            clearInterval(pollInterval);
+            setAiRewritingDump(false);
+
+            const updatedDumps = await apiGetDumps();
+            setDumps(updatedDumps);
+            showToast("Dump rewritten by AI!");
+          } else if (statusRes.status === "FAILED") {
+            clearInterval(pollInterval);
+            setAiRewritingDump(false);
+            showToast("AI Rewrite failed.", "error");
+          }
+        } catch (pollErr) {
+          console.error(`[App] Error polling job status:`, pollErr);
+          clearInterval(pollInterval);
+          setAiRewritingDump(false);
         }
-        return d;
-      }));
-      
+      }, 500);
+    } catch (err) {
+      console.error("[App] Failed to start rewrite job:", err);
       setAiRewritingDump(false);
-    }, 1800);
+      showToast("Failed to start rewrite job on backend.", "error");
+    }
   };
 
   useEffect(()=>{
@@ -1087,13 +1462,174 @@ export default function App(){
   const cells=Array(calFirst+calTotal).fill(null).map((_,i)=>i<calFirst?null:i-calFirst+1);
   const todayInView=calYear===getNow().getFullYear()&&calMonth===getNow().getMonth();
   const postsOnDay=d=>{ if(!d)return[]; const ds=toDateStr(new Date(calYear,calMonth,d)); return posts.filter(p=>p.status!=="archived"&&p.date===ds); };
+  const handleSavePost = async () => {
+    if (!localPost) return;
+    setSavingPost(true);
+    try {
+      const saved = await apiUpdatePost(localPost.id, localPost);
+      setPosts(ps => ps.map(p => p.id === localPost.id ? saved : p));
+      setSelectedPost(saved);
+      setPostIsDirty(false);
+      showToast("Post saved successfully.");
+    } catch (err) {
+      console.error("[App] Failed to save post:", err);
+      showToast("Failed to save post.", "error");
+    } finally {
+      setSavingPost(false);
+    }
+  };
 
-  const updatePost=(id,patch)=>{setPosts(ps=>ps.map(p=>p.id===id?{...p,...patch}:p));setSelectedPost(prev=>prev?.id===id?{...prev,...patch}:prev);};
-  const deletePost=id=>{setPosts(ps=>ps.filter(p=>p.id!==id));setSelectedPost(null);};
+  const handleResetPost = () => {
+    if (selectedPost) {
+      setLocalPost(JSON.parse(JSON.stringify(selectedPost)));
+      setPostIsDirty(false);
+      showToast("Changes reset.");
+    }
+  };
 
-  const activeDump=dumps.find(d=>d.id===activeDumpId)||null;
-  const updateDump=(id,patch)=>setDumps(ds=>ds.map(d=>d.id===id?{...d,...patch}:d));
-  const deleteDump=id=>{setDumps(ds=>ds.filter(d=>d.id!==id));setActiveDumpId(dumps.find(d=>d.id!==id&&!d.archived)?.id||null);};
+  const handleCancelPost = () => {
+    if (postIsDirty) {
+      if (confirm("You have unsaved changes. Discard them?")) {
+        setSelectedPost(null);
+      }
+    } else {
+      setSelectedPost(null);
+    }
+  };
+
+  const handleSaveDump = async () => {
+    if (!localDump) return;
+    setSavingDump(true);
+    try {
+      const saved = await apiUpdateDump(localDump.id, localDump);
+      setDumps(ds => ds.map(d => d.id === localDump.id ? saved : d));
+      // Explicitly update localDump to server response (keeps ts and server fields fresh)
+      setLocalDump(JSON.parse(JSON.stringify(saved)));
+      setDumpIsDirty(false);
+      showToast("Brain dump saved successfully.");
+    } catch (err) {
+      console.error("[App] Failed to save dump:", err);
+      showToast("Failed to save brain dump.", "error");
+    } finally {
+      setSavingDump(false);
+    }
+  };
+
+  const handleResetDump = () => {
+    const original = dumps.find(d => d.id === activeDumpId);
+    if (original) {
+      setLocalDump(JSON.parse(JSON.stringify(original)));
+      setDumpIsDirty(false);
+      showToast("Changes reset.");
+    }
+  };
+
+  const selectDump = (id) => {
+    if (dumpIsDirty) {
+      if (!confirm("You have unsaved changes in this brain dump. Discard them?")) {
+        return;
+      }
+    }
+    setActiveDumpId(id);
+  };
+
+  const handleSaveShoot = async () => {
+    if (!localShoot) return;
+    setSavingShoot(true);
+    try {
+      const saved = await apiUpdateShoot(localShoot.id, localShoot);
+      setShoots(ss => ss.map(s => s.id === localShoot.id ? saved : s));
+      setLocalShoot(JSON.parse(JSON.stringify(saved)));
+      setShootIsDirty(false);
+      showToast("Shoot session saved successfully.");
+    } catch (err) {
+      console.error("[App] Failed to save shoot:", err);
+      showToast("Failed to save shoot session.", "error");
+    } finally {
+      setSavingShoot(false);
+    }
+  };
+
+  const handleResetShoot = () => {
+    const original = shoots.find(s => s.id === selectedShootId);
+    if (original) {
+      setLocalShoot(JSON.parse(JSON.stringify(original)));
+      setShootIsDirty(false);
+      showToast("Changes reset.");
+    }
+  };
+
+  const selectShoot = (id) => {
+    if (shootIsDirty) {
+      if (!confirm("You have unsaved changes in this shoot session. Discard them?")) {
+        return;
+      }
+    }
+    setSelectedShootId(id);
+  };
+
+  const updatePost = async (id, patch) => {
+    try {
+      const saved = await apiUpdatePost(id, patch);
+      setPosts(ps => ps.map(p => p.id === id ? saved : p));
+      if (selectedPost?.id === id) {
+        setSelectedPost(saved);
+      }
+    } catch (err) {
+      console.error("[App] Failed to update post:", err);
+      showToast("Failed to save post.", "error");
+    }
+  };
+
+  const deletePost = async id => {
+    if (!confirm("Are you sure you want to delete this content planner post?")) return;
+    try {
+      await apiDeletePost(id);
+      setPosts(ps => ps.filter(p => p.id !== id));
+      setSelectedPost(null);
+      showToast("Post deleted successfully.");
+    } catch (err) {
+      console.error(`[App] Failed to delete post ${id}:`, err);
+      showToast("Failed to delete post.", "error");
+    }
+  };
+
+  const updateDump = async (id, patch) => {
+    try {
+      const saved = await apiUpdateDump(id, patch);
+      setDumps(ds => ds.map(d => d.id === id ? saved : d));
+    } catch (err) {
+      console.error("[App] Failed to update dump:", err);
+      showToast("Failed to save dump.", "error");
+    }
+  };
+
+  const deleteDump = async id => {
+    if (!confirm("Are you sure you want to delete this brain dump?")) return;
+    try {
+      await apiDeleteDump(id);
+      // Compute next selection from current state BEFORE filter
+      const remaining = dumps.filter(d => d.id !== id && !d.archived);
+      const nextId = remaining[0]?.id || null;
+      setDumps(ds => ds.filter(d => d.id !== id));
+      setActiveDumpId(nextId);
+      showToast("Brain dump deleted.");
+    } catch (err) {
+      console.error(`[App] Failed to delete dump ${id}:`, err);
+      showToast("Failed to delete brain dump.", "error");
+    }
+  };
+
+  const tryParseJSON = (text) => {
+    if (!text) return null;
+    try {
+      const parsed = typeof text === "string" ? JSON.parse(text) : text;
+      if (parsed && typeof parsed === "object" && (parsed.rewrittenText || parsed.hooks || parsed.mode || parsed.shortCaptions)) {
+        return parsed;
+      }
+    } catch (e) {}
+    return null;
+  };
 
   const getDeliverablesArray = (collab) => {
     if (!collab) return [];
@@ -1102,7 +1638,7 @@ export default function App(){
       list = collab.deliverables;
     } else if (typeof collab.deliverables === "string") {
       list = collab.deliverables.split("\n").filter(Boolean).map((line, idx) => ({
-        id: collab.id * 100 + idx,
+        id: `${collab.id}-del-${idx}`,
         text: line.trim(),
         postId: null,
         shootId: null,
@@ -1122,38 +1658,49 @@ export default function App(){
     });
   };
 
-  const toggleDeliverableCompleted = (collabId, delId) => {
-    setCollabs(prev => prev.map(c => {
-      if (c.id !== collabId) return c;
-      const parsed = getDeliverablesArray(c);
-      const updated = parsed.map(d => d.id === delId ? { ...d, completed: !d.completed } : d);
-      return { ...c, deliverables: updated };
-    }));
+  const toggleDeliverableCompleted = async (collabId, delId) => {
+    const collab = collabs.find(c => c.id === collabId);
+    if (!collab) return;
+    const parsed = getDeliverablesArray(collab);
+    const updated = parsed.map(d => d.id === delId ? { ...d, completed: !d.completed } : d);
+    try {
+      const saved = await apiUpdateCollab(collabId, { deliverables: updated });
+      setCollabs(prev => prev.map(c => c.id === collabId ? saved : c));
+    } catch (err) {
+      console.error("Failed to update collab deliverable:", err);
+    }
   };
 
-  const linkPostToDeliverable = (collabId, delId, postId) => {
-    setCollabs(prev => prev.map(c => {
-      if (c.id !== collabId) return c;
-      const parsed = getDeliverablesArray(c);
-      const updated = parsed.map(d => d.id === delId ? { ...d, postId: postId || null } : d);
-      return { ...c, deliverables: updated };
-    }));
+  const linkPostToDeliverable = async (collabId, delId, postId) => {
+    const collab = collabs.find(c => c.id === collabId);
+    if (!collab) return;
+    const parsed = getDeliverablesArray(collab);
+    const updated = parsed.map(d => d.id === delId ? { ...d, postId: postId || null } : d);
+    try {
+      const saved = await apiUpdateCollab(collabId, { deliverables: updated });
+      setCollabs(prev => prev.map(c => c.id === collabId ? saved : c));
+    } catch (err) {
+      console.error("Failed to link post to collab:", err);
+    }
   };
 
-  const linkShootToDeliverable = (collabId, delId, shootId) => {
-    setCollabs(prev => prev.map(c => {
-      if (c.id !== collabId) return c;
-      const parsed = getDeliverablesArray(c);
-      const updated = parsed.map(d => d.id === delId ? { ...d, shootId: shootId || null } : d);
-      return { ...c, deliverables: updated };
-    }));
+  const linkShootToDeliverable = async (collabId, delId, shootId) => {
+    const collab = collabs.find(c => c.id === collabId);
+    if (!collab) return;
+    const parsed = getDeliverablesArray(collab);
+    const updated = parsed.map(d => d.id === delId ? { ...d, shootId: shootId || null } : d);
+    try {
+      const saved = await apiUpdateCollab(collabId, { deliverables: updated });
+      setCollabs(prev => prev.map(c => c.id === collabId ? saved : c));
+    } catch (err) {
+      console.error("Failed to link shoot to collab:", err);
+    }
   };
 
-  const createPostForDeliverable = (collabId, delId, text) => {
-    const np = {
-      id: Date.now(),
-      date: todayStr,
+  const createPostForDeliverable = async (collabId, delId, text) => {
+    const postData = {
       title: text || "collab post",
+      date: todayStr,
       type: "reel",
       status: "draft",
       mood: "soft",
@@ -1161,96 +1708,154 @@ export default function App(){
       hashtags: "",
       shootId: null
     };
-    setPosts(ps => [...ps, np]);
-    linkPostToDeliverable(collabId, delId, np.id);
+    const np = await createNewPost(postData);
+    await linkPostToDeliverable(collabId, delId, np.id);
   };
 
-  const createShootForDeliverable = (collabId, delId, text) => {
-    const ns = {
-      id: Date.now(),
-      name: (text || "collab shoot") + " Session",
-      shootDate: todayStr,
-      postId: null,
-      slots: getSuggestedShotsForMood("default")
-    };
-    setShoots(ss => [...ss, ns]);
-    linkShootToDeliverable(collabId, delId, ns.id);
+  const createShootForDeliverable = async (collabId, delId, text) => {
+    try {
+      const ns = await apiCreateShoot({
+        name: (text || "collab shoot") + " Session",
+        shootDate: todayStr,
+        postId: null,
+        slots: getSuggestedShotsForMood("default")
+      });
+      setShoots(ss => [...ss, ns]);
+      await linkShootToDeliverable(collabId, delId, ns.id);
+      showToast("Linked Shoot session created!");
+    } catch (err) {
+      console.error("Failed to create shoot for deliverable:", err);
+    }
   };
 
-  const addDeliverableToCollab = (collabId) => {
+  const addDeliverableToCollab = async (collabId) => {
     if (!newDeliverableText.trim()) return;
-    setCollabs(prev => prev.map(c => {
-      if (c.id !== collabId) return c;
-      const parsed = getDeliverablesArray(c);
-      const updated = [...parsed, {
-        id: Date.now(),
-        text: newDeliverableText.trim(),
+    const collab = collabs.find(c => c.id === collabId);
+    if (!collab) return;
+    const parsed = getDeliverablesArray(collab);
+    const updated = [...parsed, {
+      id: Date.now(),
+      text: newDeliverableText.trim(),
+      postId: null,
+      shootId: null,
+      completed: false
+    }];
+    const rates = calculateCollabRates(updated);
+    try {
+      const saved = await apiUpdateCollab(collabId, { deliverables: updated, quote: String(rates.total), negotiatedAmount: String(rates.total) });
+      setCollabs(prev => prev.map(c => c.id === collabId ? saved : c));
+      setNewDeliverableText("");
+    } catch (err) {
+      console.error("Failed to add collab deliverable:", err);
+    }
+  };
+
+  const adjustCollabDeliverable = async (collabId, type, increment) => {
+    const collab = collabs.find(c => c.id === collabId);
+    if (!collab) return;
+    const parsed = getDeliverablesArray(collab);
+    let updated = [];
+    if (increment > 0) {
+      const existingCount = parsed.filter(d => d.type === type).length;
+      const typeLabel = type === "reel" ? "Reel" : type === "story" ? "Story" : type === "carousel" ? "Carousel" : "Photo";
+      const newDel = {
+        id: Date.now() + Math.random(),
+        text: `1x ${typeLabel} #${existingCount + 1}`,
+        type,
         postId: null,
         shootId: null,
         completed: false
-      }];
-      // Calculate rates for the updated list and update quote/negotiated amount
-      const rates = calculateCollabRates(updated);
-      return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
-    }));
-    setNewDeliverableText("");
+      };
+      updated = [...parsed, newDel];
+    } else {
+      const typeItems = parsed.filter(d => d.type === type);
+      if (typeItems.length === 0) return;
+      const lastItem = typeItems[typeItems.length - 1];
+      updated = parsed.filter(d => d.id !== lastItem.id);
+    }
+    const rates = calculateCollabRates(updated);
+    try {
+      const saved = await apiUpdateCollab(collabId, { deliverables: updated, quote: String(rates.total), negotiatedAmount: String(rates.total) });
+      setCollabs(prev => prev.map(c => c.id === collabId ? saved : c));
+    } catch (err) {
+      console.error("Failed to adjust collab deliverable:", err);
+    }
   };
 
-  const adjustCollabDeliverable = (collabId, type, increment) => {
-    setCollabs(prev => prev.map(c => {
-      if (c.id !== collabId) return c;
-      const parsed = getDeliverablesArray(c);
-      if (increment > 0) {
-        const existingCount = parsed.filter(d => d.type === type).length;
-        const typeLabel = type === "reel" ? "Reel" : type === "story" ? "Story" : type === "carousel" ? "Carousel" : "Photo";
-        const newDel = {
-          id: Date.now() + Math.random(),
-          text: `1x ${typeLabel} #${existingCount + 1}`,
-          type,
-          postId: null,
-          shootId: null,
-          completed: false
-        };
-        const updated = [...parsed, newDel];
-        const rates = calculateCollabRates(updated);
-        return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
-      } else {
-        const typeItems = parsed.filter(d => d.type === type);
-        if (typeItems.length === 0) return c;
-        const lastItem = typeItems[typeItems.length - 1];
-        const updated = parsed.filter(d => d.id !== lastItem.id);
-        const rates = calculateCollabRates(updated);
-        return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
-      }
-    }));
-  };
-
-  const deleteDeliverableFromCollab = (collabId, delId) => {
-    setCollabs(prev => prev.map(c => {
-      if (c.id !== collabId) return c;
-      const parsed = getDeliverablesArray(c);
-      const updated = parsed.filter(d => d.id !== delId);
-      const rates = calculateCollabRates(updated);
-      return { ...c, deliverables: updated, quote: rates.total, negotiatedAmount: rates.total };
-    }));
+  const deleteDeliverableFromCollab = async (collabId, delId) => {
+    const collab = collabs.find(c => c.id === collabId);
+    if (!collab) return;
+    const parsed = getDeliverablesArray(collab);
+    const updated = parsed.filter(d => d.id !== delId);
+    const rates = calculateCollabRates(updated);
+    try {
+      const saved = await apiUpdateCollab(collabId, { deliverables: updated, quote: String(rates.total), negotiatedAmount: String(rates.total) });
+      setCollabs(prev => prev.map(c => c.id === collabId ? saved : c));
+    } catch (err) {
+      console.error("Failed to delete collab deliverable:", err);
+    }
   };
   
-  const moveDumpToPlanner=dump=>{
-    const np={id:Date.now(),date:todayStr,title:dump.title||"untitled post",type:"reel",status:"draft",mood:dump.mood,caption:dump.text,hashtags:"",shootId:null};
-    setPosts(ps=>[...ps,np]);
+  const moveDumpToPlanner=async dump=>{
+    const postData={
+      title:dump.title||"untitled post",
+      date:todayStr,
+      type: "reel",
+      status: "draft",
+      mood: dump.mood,
+      caption: dump.text,
+      hashtags: "",
+      shootId: null
+    };
+    const np = await createNewPost(postData);
     setSelectedPost(np);
     setTab("planner");
   };
-  const moveDumpToShoot=dump=>{
-    const ns={id:Date.now(),name:dump.title||"new shoot session",shootDate:todayStr,postId:null,slots:getSuggestedShotsForMood(dump.mood)};
-    setShoots(ss=>[...ss,ns]);
-    setSelectedShootId(ns.id);
-    setTab("shoot");
+
+  const moveDumpToShoot = async dump => {
+    try {
+      const ns = await apiCreateShoot({
+        name: dump.title || "new shoot session",
+        shootDate: todayStr,
+        postId: null,
+        slots: getSuggestedShotsForMood(dump.mood)
+      });
+      setShoots(ss => [...ss, ns]);
+      setSelectedShootId(ns.id);
+      setTab("shoot");
+      showToast("Shoot session created from Brain Dump!");
+    } catch (err) {
+      console.error("Failed to create shoot from dump:", err);
+      showToast("Failed to create shoot.", "error");
+    }
+  };
+ 
+  const selectedShoot = shoots.find(s => s.id === selectedShootId) || null;
+  const activeDump = dumps.find(d => d.id === activeDumpId) || null;
+
+  const updateShoot = async (id, patch) => {
+    try {
+      const saved = await apiUpdateShoot(id, patch);
+      setShoots(ss => ss.map(s => s.id === id ? saved : s));
+    } catch (err) {
+      console.error("Failed to update shoot:", err);
+    }
   };
 
-  const selectedShoot=shoots.find(s=>s.id===selectedShootId)||null;
-  const updateShoot=(id,patch)=>setShoots(ss=>ss.map(s=>s.id===id?{...s,...patch}:s));
-  const deleteShoot=id=>{setShoots(ss=>ss.filter(s=>s.id!==id));setSelectedShootId(null);};
+  const deleteShoot = async id => {
+    if (!confirm("Are you sure you want to delete this shoot session?")) return;
+    try {
+      await apiDeleteShoot(id);
+      const remaining = shoots.filter(s => s.id !== id);
+      const nextId = remaining[0]?.id || null;
+      setShoots(ss => ss.filter(s => s.id !== id));
+      setSelectedShootId(nextId);
+      showToast("Shoot session deleted.");
+    } catch (err) {
+      console.error("Failed to delete shoot:", err);
+      showToast("Failed to delete shoot.", "error");
+    }
+  };
   const filteredShoots=shoots.filter(s=>{
     if(!s.shootDate)return shootFilter==="upcoming";
     if(shootFilter==="upcoming")return isUpcoming(s.shootDate);
@@ -1260,8 +1865,46 @@ export default function App(){
   }).sort((a,b)=>{const da=fromDateStr(a.shootDate),db=fromDateStr(b.shootDate);if(!da&&!db)return 0;if(!da)return 1;if(!db)return-1;return da-db;});
   
   const shootDateLabel=s=>{if(!s.shootDate)return"no date set";if(isToday(s.shootDate))return"today ✦";if(isThisWeek(s.shootDate))return"this week · "+friendlyDate(s.shootDate);return friendlyDate(s.shootDate);};
-  const addShotToShoot=()=>{if(!newShot.shot.trim()||!selectedShootId)return;setShoots(ss=>ss.map(s=>{if(s.id!==selectedShootId)return s;return{...s,slots:{...s.slots,[shootSlot]:[...s.slots[shootSlot],{...newShot,id:Date.now()}]}};}));setNewShot({shot:"",loc:"",mood:"cinematic",light:"",angle:"",props:"",});};
-  const removeShotFromShoot=(slot,shotId)=>setShoots(ss=>ss.map(s=>{if(s.id!==selectedShootId)return s;return{...s,slots:{...s.slots,[slot]:s.slots[slot].filter(x=>x.id!==shotId)}};}));
+  const addShotToShoot=()=>{
+    if(!newShot.shot.trim()||!selectedShootId)return;
+    const shot = {...newShot,id:Date.now()};
+    setShoots(ss=>ss.map(s=>{
+      if(s.id!==selectedShootId)return s;
+      const existing=s.slots?.[shootSlot]||[];
+      return{...s,slots:{...s.slots,[shootSlot]:[...existing,shot]}};
+    }));
+    setLocalShoot(prev=>prev?{...prev,slots:{...prev.slots,[shootSlot]:[...(prev.slots?.[shootSlot]||[]),shot]}}:prev);
+    setShootIsDirty(true);
+    setNewShot({shot:"",loc:"",mood:"cinematic",light:"",angle:"",props:""});
+  };
+  const removeShotFromShoot=(slot,shotId)=>{
+    setShoots(ss=>ss.map(s=>{
+      if(s.id!==selectedShootId)return s;
+      const existing=s.slots?.[slot]||[];
+      return{...s,slots:{...s.slots,[slot]:existing.filter(x=>x.id!==shotId)}};
+    }));
+    setLocalShoot(prev=>prev?{...prev,slots:{...prev.slots,[slot]:(prev.slots?.[slot]||[]).filter(x=>x.id!==shotId)}}:prev);
+    setShootIsDirty(true);
+  };
+
+  // Add a suggested default shot concept to a slot in the shoot planner
+  const handleAddDefaultConcept = (slot) => {
+    if (!selectedShootId || !localShoot) return;
+    const moodKey = localShoot.slots ? (Object.values(localShoot.slots).flat()[0]?.mood || "default") : "default";
+    const suggestions = getSuggestedShotsForMood(moodKey);
+    const slotShots = suggestions[slot] || suggestions.morning || [];
+    if (!slotShots.length) return;
+    const shot = { ...slotShots[0], id: Date.now() };
+    setShoots(ss => ss.map(s => {
+      if (s.id !== selectedShootId) return s;
+      return { ...s, slots: { ...s.slots, [slot]: [...(s.slots?.[slot] || []), shot] } };
+    }));
+    setLocalShoot(prev => prev ? {
+      ...prev,
+      slots: { ...prev.slots, [slot]: [...(prev.slots?.[slot] || []), shot] }
+    } : prev);
+    setShootIsDirty(true);
+  };
 
   // AI Trend Scout Trigger Simulation
   const runAiScout = () => {
@@ -1649,12 +2292,29 @@ export default function App(){
                   </div>
 
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                    <button style={S.btn("var(--text-muted)")} onClick={()=>setAddingCollab(false)}>cancel</button>
-                    <button style={S.btn("var(--accent-color)")} onClick={()=>{
-                      const nc={...newCollab, id:Date.now(), createdAt:todayStr, quote:Number(newCollab.quote)||0, negotiatedAmount:Number(newCollab.negotiatedAmount)||0, deliverables: formDeliverables};
-                      setCollabs(prev=>[nc,...prev]);
-                      setSelectedCollabId(nc.id);
+                    <button style={S.btn("var(--text-muted)")} onClick={()=>{
+                      const isDirty = newCollab.brand.trim() || newCollab.contactName.trim() || newCollab.email.trim() || newCollab.notes.trim();
+                      if (isDirty) {
+                        if (confirm("You have unsaved changes in this collaboration log. Discard them?")) setAddingCollab(false);
+                      } else {
+                        setAddingCollab(false);
+                      }
+                    }}>cancel</button>
+                    <button style={S.btn("var(--accent-color)")} onClick={async ()=>{
+                      const nc={...newCollab, createdAt:todayStr, quote:String(Number(newCollab.quote)||0), negotiatedAmount:String(Number(newCollab.negotiatedAmount)||0), deliverables: formDeliverables};
+                      try {
+                        const saved = await apiCreateCollab(nc);
+                        setCollabs(prev=>[saved,...prev]);
+                        setSelectedCollabId(saved.id);
+                      } catch(err) {
+                        console.error("Failed to save collab to API, using local:", err);
+                        const localNc = { ...nc, id: String(Date.now()) };
+                        setCollabs(prev=>[localNc,...prev]);
+                        setSelectedCollabId(localNc.id);
+                      }
                       setAddingCollab(false);
+                      setFormDeliverables([]);
+                      setNewCollab({ brand:"", contactName:"", email:"", platform:"Instagram", status:"dream brand", quote:"", negotiatedAmount:"", deliverables:[], dueDate:"", paymentStatus:"unpaid", notes:"", pitchDraft:"", followUpDraft:"", scriptText:"", wardrobe:"", props:"", briefFileName:"", briefFileUrl:"" });
                     }} disabled={!newCollab.brand.trim()}>save collab</button>
                   </div>
                 </div>
@@ -1781,7 +2441,7 @@ export default function App(){
                                                 if (e.target.value === "create") {
                                                   createPostForDeliverable(c.id, del.id, del.text);
                                                 } else if (e.target.value) {
-                                                  linkPostToDeliverable(c.id, del.id, Number(e.target.value));
+                                                  linkPostToDeliverable(c.id, del.id, e.target.value);
                                                 }
                                               }} value="">
                                               <option value="">🔗 Link Post...</option>
@@ -1805,7 +2465,7 @@ export default function App(){
                                                 if (e.target.value === "create") {
                                                   createShootForDeliverable(c.id, del.id, del.text);
                                                 } else if (e.target.value) {
-                                                  linkShootToDeliverable(c.id, del.id, Number(e.target.value));
+                                                  linkShootToDeliverable(c.id, del.id, e.target.value);
                                                 }
                                               }} value="">
                                               <option value="">🎬 Link Shoot...</option>
@@ -1960,12 +2620,29 @@ export default function App(){
                           )}
                         </div>
                         <div style={S.row}>
-                          <button style={S.btn("var(--text-muted)",true)} onClick={()=>{
-                            setCollabs(prev=>prev.map(x=>x.id===c.id ? {...x, status: "ghosted 😭"} : x));
+                          <button style={S.btn("var(--text-muted)",true)} onClick={async ()=>{
+                            try {
+                              const updated = await apiUpdateCollab(c.id, { status: "ghosted 😭" });
+                              setCollabs(prev=>prev.map(x=>x.id===c.id ? updated : x));
+                              showToast("Marked as ghosted.");
+                            } catch (err) {
+                              console.error("Failed to update collab status:", err);
+                              showToast("Failed to update status.", "error");
+                            }
                           }}>Nudge (Mark Ghosted 😭)</button>
-                          <button style={S.btn("#f0a090",true)} onClick={()=>{
-                            setCollabs(prev=>prev.filter(x=>x.id!==c.id));
-                            setSelectedCollabId(null);
+                          <button style={S.btn("#f0a090",true)} onClick={async ()=>{
+                            if (!confirm("Delete this collab reference?")) return;
+                            try {
+                              await apiDeleteCollab(c.id);
+                              const remaining = collabs.filter(x=>x.id!==c.id);
+                              const nextId = remaining[0]?.id || null;
+                              setCollabs(prev=>prev.filter(x=>x.id!==c.id));
+                              setSelectedCollabId(nextId);
+                              showToast("Collab reference deleted.");
+                            } catch (err) {
+                              console.error("Failed to delete collab:", err);
+                              showToast("Failed to delete collab.", "error");
+                            }
                           }}>Delete reference</button>
                         </div>
                       </div>
@@ -2133,6 +2810,34 @@ export default function App(){
           </div>
           
           <div style={{display:"flex",alignItems:"center",gap:12}}>
+            {user && (
+              <>
+                <span style={{
+                  fontSize: 11,
+                  color: (user.credits || 0) > 0 ? "var(--text-primary)" : "#f0a090",
+                  background: (user.credits || 0) > 0 ? "rgba(168, 200, 160, 0.15)" : "rgba(240, 160, 144, 0.15)",
+                  border: `1px solid ${(user.credits || 0) > 0 ? "var(--accent-light)" : "#f0a090"}`,
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px"
+                }}>
+                  ⚡ Credits: {user.credits || 0} / 5
+                </span>
+                <span style={{
+                  fontSize: 11,
+                  color: "var(--text-secondary)",
+                  background: "var(--border-color)",
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  fontWeight: 500
+                }}>
+                  ✨ {user.creatorName}
+                </span>
+              </>
+            )}
             {/* Theme Toggle */}
             <button onClick={()=>setTheme(theme==="light"?"dark":"light")} style={{
               background:"none",border:"1px solid var(--border-color)",borderRadius:30,padding:"6px 12px",
@@ -2140,6 +2845,14 @@ export default function App(){
             }}>
               {theme==="light"?"🎬 pro edit bay":"☀️ creator studio"}
             </button>
+            {user && (
+              <button onClick={logout} style={{
+                background:"none",border:"1px solid #f0a090",borderRadius:30,padding:"6px 12px",
+                cursor:"pointer",fontSize:11,color:"#f0a090",fontWeight: 500
+              }}>
+                Logout
+              </button>
+            )}
             <p style={{fontSize:12,color:"var(--accent-color)",fontStyle:"italic",textAlign:"right",letterSpacing:0.3,maxWidth:220,lineHeight:1.4}}>{quote}</p>
           </div>
         </div>
@@ -2169,7 +2882,7 @@ export default function App(){
                 <NavBtn onClick={()=>navigateCal("next")}>›</NavBtn>
                 {!todayInView&&<NavBtn onClick={()=>navigateCal("today")} active color="var(--accent-color)">today</NavBtn>}
               </div>
-              <button style={S.btn("var(--accent-color)")} onClick={()=>{const np={id:Date.now(),date:todayStr,title:"untitled post",type:"reel",status:"draft",mood:"soft",caption:"",hashtags:"",shootId:null};setPosts(ps=>[...ps,np]);setSelectedPost(np);}}>+ new post</button>
+              <button style={S.btn("var(--accent-color)")} onClick={async ()=>{const np=await createNewPost({title:"untitled post",type:"reel",status:"draft",mood:"soft"});setSelectedPost(np);}}>+ new post</button>
             </div>
 
             <div className={calFade?"cal-grid cal-fade":"cal-grid cal-show"} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:22}}>
@@ -2205,7 +2918,7 @@ export default function App(){
             <div>
               <span style={{...S.label,marginBottom:8}}>your dumps</span>
               {dumps.filter(d=>!d.archived).map(d=>(
-                <div key={d.id} onClick={()=>setActiveDumpId(d.id)} style={{padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:5,background:activeDumpId===d.id?"var(--bg-secondary)":"transparent",border:activeDumpId===d.id?`1px solid ${MOOD_COLORS[d.mood]||"var(--border-color)"}`:"1px solid transparent",transition:"all 0.18s"}}>
+                <div key={d.id} onClick={()=>selectDump(d.id)} style={{padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:5,background:activeDumpId===d.id?"var(--bg-secondary)":"transparent",border:activeDumpId===d.id?`1px solid ${MOOD_COLORS[d.mood]||"var(--border-color)"}`:"1px solid transparent",transition:"all 0.18s"}}>
                   <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:activeDumpId===d.id?500:400,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{d.title||"untitled"}</div>
                   <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{d.mood} · {d.ts}</div>
                 </div>
@@ -2214,7 +2927,7 @@ export default function App(){
                 {editingDump?(
                   <div style={S.row}>
                     <input value={newDumpTitle} onChange={e=>setNewDumpTitle(e.target.value)} placeholder="title..." style={{...S.input,fontSize:12,padding:"6px 10px",flex:1}} autoFocus
-                      onKeyDown={e=>{if(e.key==="Enter"&&newDumpTitle.trim()){const nd={id:Date.now(),title:newDumpTitle.trim(),text:"",mood:"chaotic",ts:"just now",archived:false};setDumps(ds=>[...ds,nd]);setActiveDumpId(nd.id);setNewDumpTitle("");setEditingDump(false);}if(e.key==="Escape")setEditingDump(false);}}/>
+                      onKeyDown={async e=>{if(e.key==="Enter"&&newDumpTitle.trim()){await createNewDump(newDumpTitle.trim());setNewDumpTitle("");setEditingDump(false);}if(e.key==="Escape")setEditingDump(false);}}/>
                     <button onClick={()=>setEditingDump(false)} style={{...S.ghost,color:"var(--text-muted)",fontSize:16}}>×</button>
                   </div>
                 ):(
@@ -2223,7 +2936,7 @@ export default function App(){
               </div>
               
               {dumps.some(d=>d.archived)&&<div style={{marginTop:18}}><span style={{...S.label,marginBottom:6}}>archived</span>
-                {dumps.filter(d=>d.archived).map(d=><div key={d.id} style={{padding:"7px 10px",borderRadius:10,fontSize:12,cursor:"pointer",marginBottom:4,background:"transparent",color:"var(--text-muted)"}} onClick={()=>setActiveDumpId(d.id)}>{d.title}</div>)}
+                {dumps.filter(d=>d.archived).map(d=><div key={d.id} style={{padding:"7px 10px",borderRadius:10,fontSize:12,cursor:"pointer",marginBottom:4,background:"transparent",color:"var(--text-muted)"}} onClick={()=>selectDump(d.id)}>{d.title}</div>)}
               </div>}
             </div>
 
@@ -2233,7 +2946,12 @@ export default function App(){
                 <div style={S.card} className="card-in">
                   <div style={{marginBottom:14}}>
                     <div style={{display:"flex", alignItems:"center", gap:8}}>
-                      <input value={activeDump.title} onChange={e=>updateDump(activeDump.id, {title: e.target.value})} style={{...S.input,fontSize:18,fontWeight:400,border:"none",background:"transparent",padding:0,flex:1}} placeholder="Title your dump..."/>
+                      <input
+                        value={localDump ? localDump.title : (activeDump.title || "")}
+                        onChange={e => { setLocalDump(prev => prev ? {...prev, title: e.target.value} : prev); setDumpIsDirty(true); }}
+                        style={{...S.input,fontSize:18,fontWeight:400,border:"none",background:"transparent",padding:0,flex:1}}
+                        placeholder="Title your dump..."
+                      />
                       <button onClick={()=>generateTagsAI(activeDump.id)} disabled={aiGeneratingTags} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
                         {aiGeneratingTags ? "✨ Tagging..." : "✨ Auto-tag"}
                       </button>
@@ -2244,23 +2962,285 @@ export default function App(){
                     <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>Last modified {activeDump.ts}</div>
                   </div>
                   
-                  <div style={{marginBottom:14}}>
-                    <span style={S.label}>Mood for this dump</span>
-                    <MoodPicker value={activeDump.mood} onChange={m=>updateDump(activeDump.id, {mood: m})}/>
-                  </div>
-
-                  <div style={{position:"relative",marginBottom:14}}>
-                    <textarea value={activeDump.text} onChange={e=>updateDump(activeDump.id, {text: e.target.value})} style={{...S.textarea,minHeight:220,fontFamily:"var(--font-serif)",fontSize:15,lineHeight:1.7}} placeholder="unfiltered thoughts here..."/>
-                    <div style={{position:"absolute",right:10,bottom:10,fontSize:11,color:"var(--text-muted)"}}>{activeDump.text.length} chars · {activeDump.text.split(/\s+/).filter(Boolean).length} words</div>
-                  </div>
-
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={S.row}>
-                      <button style={S.btn("#a8c8a0",true)} onClick={()=>moveDumpToPlanner(activeDump)}>⚡ Convert to Post</button>
-                      <button style={S.btn("#a0b8c8",true)} onClick={()=>moveDumpToShoot(activeDump)}>🎬 Create Shoot</button>
+                  {aiRewritingDump ? (
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minHeight: 280,
+                      background: "var(--bg-secondary)",
+                      borderRadius: 16,
+                      border: "1px dashed var(--accent-color)",
+                      position: "relative",
+                      overflow: "hidden",
+                      padding: 20
+                    }}>
+                      <style>{`
+                        @keyframes pulse-glowing {
+                          0%, 100% { opacity: 0.3; transform: scale(0.95); }
+                          50% { opacity: 0.8; transform: scale(1.05); }
+                        }
+                        @keyframes bounce-cinematic {
+                          0%, 100% { transform: translateY(0); }
+                          50% { transform: translateY(-6px); }
+                        }
+                      `}</style>
+                      <div style={{
+                        position: "absolute",
+                        top: "-50%",
+                        left: "-50%",
+                        width: "200%",
+                        height: "200%",
+                        background: "radial-gradient(circle, rgba(216, 99, 68, 0.1) 0%, transparent 60%)",
+                        animation: "pulse-glowing 3s infinite ease-in-out",
+                        pointerEvents: "none"
+                      }} />
+                      <div style={{ fontSize: 32, marginBottom: 16, animation: "bounce-cinematic 2s infinite ease-in-out" }}>✨</div>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8, letterSpacing: "0.03em" }}>
+                        AI Rewrite In Progress...
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 320, textAlign: "center", lineHeight: 1.6 }}>
+                        Analyzing raw concept, structuring storyboard, generating viral hooks, captions and b-roll ideas.
+                      </div>
                     </div>
+                  ) : (() => {
+                    const parsed = tryParseJSON(activeDump.text);
+                    if (parsed) {
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 14 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: "1px solid var(--border-color)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{
+                                background: "linear-gradient(135deg, var(--accent-color) 0%, var(--accent-dark) 100%)",
+                                color: "#FFFFFF",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: "3px 8px",
+                                borderRadius: 8,
+                                letterSpacing: "0.05em",
+                                textTransform: "uppercase"
+                              }}>
+                                {parsed.mode ? `AI: ${parsed.mode}` : "AI: MOCK"}
+                              </span>
+                              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Structured Creator Outline</span>
+                            </div>
+                            <button 
+                              onClick={() => updateDump(activeDump.id, { text: parsed.rewrittenText || "" })} 
+                              style={{ ...S.ghost, color: "#f0a090", fontSize: 11, border: "1px solid rgba(240, 160, 144, 0.4)", borderRadius: 8, padding: "3px 10px", cursor: "pointer" }}
+                            >
+                              Reset to Raw Text
+                            </button>
+                          </div>
+
+                          {parsed.rewrittenText && (
+                            <div>
+                              <span style={{ ...S.label, display: "block", marginBottom: 6 }}>Polished Script / Outline</span>
+                              <div style={{
+                                background: "var(--bg-secondary)",
+                                border: "1px solid var(--border-color)",
+                                borderRadius: 12,
+                                padding: 16,
+                                fontFamily: "var(--font-serif)",
+                                fontSize: 15,
+                                lineHeight: 1.7,
+                                color: "var(--text-primary)",
+                                whiteSpace: "pre-line"
+                              }}>
+                                {parsed.rewrittenText}
+                              </div>
+                            </div>
+                          )}
+
+                          {parsed.hooks && parsed.hooks.length > 0 && (
+                            <div>
+                              <span style={{ ...S.label, display: "block", marginBottom: 6 }}>Viral Hooks</span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                {parsed.hooks.map((hook, idx) => (
+                                  <div key={idx} style={{
+                                    background: "var(--bg-secondary)",
+                                    border: "1px solid var(--border-color)",
+                                    borderRadius: 12,
+                                    padding: "12px 16px",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 12
+                                  }}>
+                                    <span style={{ fontSize: 13, color: "var(--text-primary)", fontFamily: "var(--font-serif)", fontStyle: "italic", lineHeight: 1.4 }}>
+                                      {hook}
+                                    </span>
+                                    <button 
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(hook);
+                                        alert("Hook copied!");
+                                      }} 
+                                      style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 11, padding: "2px 6px", border: "1px solid var(--border-color)", borderRadius: 6, flexShrink: 0 }}
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {parsed.captions && parsed.captions.length > 0 && (
+                            <div>
+                              <span style={{ ...S.label, display: "block", marginBottom: 6 }}>Caption Templates</span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                {parsed.captions.map((caption, idx) => (
+                                  <div key={idx} style={{
+                                    background: "var(--bg-secondary)",
+                                    border: "1px solid var(--border-color)",
+                                    borderRadius: 12,
+                                    padding: 14,
+                                    position: "relative"
+                                  }}>
+                                    <p style={{ fontSize: 13, lineHeight: 1.5, color: "var(--text-primary)", margin: 0, paddingRight: 40 }}>
+                                      {caption}
+                                    </p>
+                                    <button 
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(caption);
+                                        alert("Caption copied!");
+                                      }} 
+                                      style={{
+                                        position: "absolute",
+                                        right: 12,
+                                        top: 12,
+                                        ...S.ghost,
+                                        color: "var(--accent-color)",
+                                        fontSize: 11,
+                                        padding: "2px 6px",
+                                        border: "1px solid var(--border-color)",
+                                        borderRadius: 6
+                                      }}
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {parsed.cta && (
+                            <div>
+                              <span style={{ ...S.label, display: "block", marginBottom: 6 }}>Call to Action</span>
+                              <div style={{
+                                background: "var(--bg-secondary)",
+                                border: "1px solid var(--border-color)",
+                                borderRadius: 12,
+                                padding: 14,
+                                fontSize: 13,
+                                color: "var(--text-primary)",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 12
+                              }}>
+                                <span style={{ fontWeight: 500 }}>{parsed.cta}</span>
+                                <button 
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(parsed.cta);
+                                    alert("CTA copied!");
+                                  }} 
+                                  style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 11, padding: "2px 6px", border: "1px solid var(--border-color)", borderRadius: 6, flexShrink: 0 }}
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {parsed.hashtags && parsed.hashtags.length > 0 && (
+                            <div>
+                              <span style={{ ...S.label, display: "block", marginBottom: 6 }}>Hashtags</span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {parsed.hashtags.map((tag, idx) => (
+                                  <span key={idx} style={{
+                                    background: "var(--bg-secondary)",
+                                    border: "1px solid var(--border-color)",
+                                    color: "var(--text-muted)",
+                                    fontSize: 12,
+                                    padding: "4px 10px",
+                                    borderRadius: 16,
+                                    cursor: "pointer",
+                                    transition: "all 0.15s"
+                                  }} onClick={() => {
+                                    navigator.clipboard.writeText(`#${tag}`);
+                                    alert(`#${tag} copied!`);
+                                  }}
+                                  onMouseEnter={e => { e.target.style.borderColor = "var(--accent-color)"; e.target.style.color = "var(--accent-color)"; }}
+                                  onMouseLeave={e => { e.target.style.borderColor = "var(--border-color)"; e.target.style.color = "var(--text-muted)"; }}
+                                  >
+                                    #{tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {parsed.shotIdeas && parsed.shotIdeas.length > 0 && (
+                            <div>
+                              <span style={{ ...S.label, display: "block", marginBottom: 6 }}>Shot Ideas & Storyboard</span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                {parsed.shotIdeas.map((shot, idx) => (
+                                  <div key={idx} style={{
+                                    background: "var(--bg-secondary)",
+                                    borderLeft: `3px solid ${MOOD_COLORS[activeDump.mood] || "var(--accent-color)"}`,
+                                    borderRadius: "0 12px 12px 0",
+                                    padding: "12px 16px",
+                                    fontSize: 13,
+                                    color: "var(--text-primary)",
+                                    lineHeight: 1.5
+                                  }}>
+                                    {shot}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    } else {
+                      if (!localDump) return null;
+                      return (
+                        <>
+                          <div style={{marginBottom:14}}>
+                            <span style={S.label}>Mood for this dump</span>
+                            <MoodPicker value={localDump.mood} onChange={m=>{ setLocalDump(prev=>({...prev, mood: m})); setDumpIsDirty(true); }}/>
+                          </div>
+
+                          <div style={{position:"relative",marginBottom:14}}>
+                            <textarea value={localDump.text || ""} onChange={e=>{ setLocalDump(prev=>({...prev, text: e.target.value})); setDumpIsDirty(true); }} style={{...S.textarea,minHeight:220,fontFamily:"var(--font-serif)",fontSize:15,lineHeight:1.7}} placeholder="unfiltered thoughts here..."/>
+                            <div style={{position:"absolute",right:10,bottom:10,fontSize:11,color:"var(--text-muted)"}}>{(localDump.text || "").length} chars · {(localDump.text || "").split(/\s+/).filter(Boolean).length} words</div>
+                          </div>
+                        </>
+                      );
+                    }
+                  })()}
+
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                     <div style={S.row}>
-                      <button style={S.btn("var(--text-muted)",true)} onClick={()=>updateDump(activeDump.id, {archived: !activeDump.archived})}>{activeDump.archived?"Unarchive":"Archive"}</button>
+                      <button style={S.btn("#a8c8a0",true)} onClick={()=>moveDumpToPlanner(localDump || activeDump)}>⚡ Convert to Post</button>
+                      <button style={S.btn("#a0b8c8",true)} onClick={()=>moveDumpToShoot(localDump || activeDump)}>🎬 Create Shoot</button>
+                    </div>
+                    <div style={{...S.row, gap:8}}>
+                      <SaveButton label="Save Dump" isDirty={dumpIsDirty} saving={savingDump} onClick={handleSaveDump} />
+                      {dumpIsDirty && (
+                        <button style={S.btn("var(--text-muted)", true)} onClick={handleResetDump}>Reset</button>
+                      )}
+                      <button style={S.btn("var(--text-muted)",true)} onClick={async ()=>{
+                        const isArchiving = !activeDump.archived;
+                        await updateDump(activeDump.id, {archived: isArchiving});
+                        if (isArchiving) {
+                          // Auto-select next non-archived dump
+                          const next = dumps.find(d => d.id !== activeDump.id && !d.archived);
+                          setActiveDumpId(next?.id || null);
+                        }
+                      }}>{activeDump.archived?"Unarchive":"Archive"}</button>
                       <button style={S.btn("#f0a090",true)} onClick={()=>deleteDump(activeDump.id)}>Delete</button>
                     </div>
                   </div>
@@ -2272,8 +3252,7 @@ export default function App(){
                   <p style={{fontSize:12,maxWidth:320,margin:"0 auto 16px"}}>Write down hook ideas, script scripts, or raw thoughts before they float away.</p>
                   <div style={{display:"flex",justifyContent:"center",gap:6,flexWrap:"wrap"}}>
                     {DUMP_PLACEHOLDERS.map((pl,i)=><button key={i} onClick={()=>{
-                      const nd={id:Date.now(),title:pl,text:"",mood:"reflective",ts:"just now",archived:false};
-                      setDumps(ds=>[...ds,nd]);setActiveDumpId(nd.id);
+                      createNewDump(pl, "reflective");
                     }} style={{...S.btn("var(--text-muted)",true),fontSize:11}}>{pl}</button>)}
                   </div>
                 </div>
@@ -2297,7 +3276,7 @@ export default function App(){
               </div>
               <span style={S.label}>sessions</span>
               {filteredShoots.map(s=>(
-                <div key={s.id} onClick={()=>setSelectedShootId(s.id)} style={{
+                <div key={s.id} onClick={()=>selectShoot(s.id)} style={{
                   padding:"10px 12px",borderRadius:12,cursor:"pointer",marginBottom:6,
                   background:selectedShootId===s.id?"var(--bg-secondary)":"transparent",
                   border:selectedShootId===s.id?"1px solid var(--border-focus)":"1px solid transparent"
@@ -2306,35 +3285,103 @@ export default function App(){
                   <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{shootDateLabel(s)}</div>
                 </div>
               ))}
-              <button style={{...S.btn("var(--accent-color)",true),width:"100%",marginTop:10}} onClick={()=>{
-                const ns={id:Date.now(),name:"untitled shoot session",shootDate:todayStr,postId:null,slots:getSuggestedShotsForMood("default")};
-                setShoots(ss=>[...ss,ns]);
-                setSelectedShootId(ns.id);
+              <button style={{...S.btn("var(--accent-color)",true),width:"100%",marginTop:10}} onClick={async ()=>{
+                try {
+                  const ns = await apiCreateShoot({
+                    name: "untitled shoot session",
+                    shootDate: todayStr,
+                    postId: null,
+                    slots: getSuggestedShotsForMood("default")
+                  });
+                  setShoots(ss=>[...ss,ns]);
+                  setSelectedShootId(ns.id);
+                } catch (err) {
+                  console.error("Failed to create shoot on server:", err);
+                  showToast("Failed to create shoot.", "error");
+                }
               }}>+ new session</button>
             </div>
 
             {/* Shoot session detailed workspace */}
             <div>
-              {selectedShoot ? (
+              {selectedShoot && localShoot ? (
                 <div style={S.card} className="card-in">
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                    <input value={selectedShoot.name} onChange={e=>updateShoot(selectedShoot.id,{name:e.target.value})} style={{...S.input,fontSize:18,fontWeight:400,border:"none",background:"transparent",padding:0,flex:1}} placeholder="Enter session title"/>
-                    <button style={S.btn("#f0a090",true)} onClick={()=>deleteShoot(selectedShoot.id)}>Delete session</button>
-                  </div>
+                  {shootMode ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 10, flexWrap: "wrap", gap: 10 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>📱 Shoot Mode Checklist: {localShoot.name}</h3>
+                        <button style={S.btn("var(--accent-color)", true)} onClick={() => setShootMode(false)}>Exit Shoot Mode</button>
+                      </div>
+                      {["morning", "afternoon", "evening"].map(slot => {
+                        const shots = localShoot.slots?.[slot] || [];
+                        if (shots.length === 0) return null;
+                        return (
+                          <div key={slot} style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>
+                              {slot}
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              {shots.map(sh => {
+                                const isDone = !!completedShots[sh.id];
+                                return (
+                                  <div key={sh.id} onClick={() => setCompletedShots(prev => ({ ...prev, [sh.id]: !prev[sh.id] }))} style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 12,
+                                    padding: "12px 16px",
+                                    background: isDone ? "var(--bg-secondary)" : "var(--bg-primary)",
+                                    border: `1px solid ${isDone ? "transparent" : "var(--border-color)"}`,
+                                    borderRadius: 12,
+                                    cursor: "pointer",
+                                    opacity: isDone ? 0.6 : 1,
+                                    transition: "all 0.2s"
+                                  }}>
+                                    <input type="checkbox" checked={isDone} onChange={() => {}} style={{ pointerEvents: "none" }} />
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: 14, fontWeight: 500, textDecoration: isDone ? "line-through" : "none", color: isDone ? "var(--text-muted)" : "var(--text-primary)" }}>{sh.shot}</div>
+                                      {(sh.loc || sh.mood || sh.light) && (
+                                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                                          {sh.loc && `📍 ${sh.loc}`} {sh.mood && `· ◎ ${sh.mood}`} {sh.light && `· ${sh.light}`}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:10,flexWrap:"wrap"}}>
+                        <input value={localShoot.name} onChange={e=>{ setLocalShoot(prev=>({...prev,name:e.target.value})); setShootIsDirty(true); }} style={{...S.input,fontSize:18,fontWeight:400,border:"none",background:"transparent",padding:0,flex:1}} placeholder="Enter session title"/>
+                        <div style={S.row}>
+                          <button style={S.btn(shootMode?"var(--accent-color)":"var(--text-muted)",true)} onClick={()=>setShootMode(true)}>
+                            📱 Shoot Mode
+                          </button>
+                          <SaveButton label="Save Shoot" isDirty={shootIsDirty} saving={savingShoot} onClick={handleSaveShoot} />
+                          {shootIsDirty && (
+                            <button style={S.btn("var(--text-muted)", true)} onClick={handleResetShoot}>Reset</button>
+                          )}
+                          <button style={S.btn("#f0a090",true)} onClick={()=>deleteShoot(localShoot.id)}>Delete session</button>
+                        </div>
+                      </div>
 
-                  <div style={{...S.grid2,marginBottom:18}}>
-                    <div>
-                      <span style={S.label}>shoot date</span>
-                      <input type="date" value={selectedShoot.shootDate||""} style={S.input} onChange={e=>updateShoot(selectedShoot.id,{shootDate:e.target.value})}/>
-                    </div>
-                    <div>
-                      <span style={S.label}>link content post</span>
-                      <select value={selectedShoot.postId||""} style={S.input} onChange={e=>updateShoot(selectedShoot.id,{postId:e.target.value?Number(e.target.value):null})}>
-                        <option value="">unlinked post</option>
-                        {posts.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
-                      </select>
-                    </div>
-                  </div>
+                      <div style={{...S.grid2,marginBottom:18}}>
+                        <div>
+                          <span style={S.label}>shoot date</span>
+                          <input type="date" value={localShoot.shootDate||""} style={S.input} onChange={e=>{ setLocalShoot(prev=>({...prev,shootDate:e.target.value})); setShootIsDirty(true); }}/>
+                        </div>
+                        <div>
+                          <span style={S.label}>link content post</span>
+                          <select value={localShoot.postId||""} style={S.input} onChange={e=>{ setLocalShoot(prev=>({...prev,postId:e.target.value || null})); setShootIsDirty(true); }}>
+                            <option value="">unlinked post</option>
+                            {posts.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
+                          </select>
+                        </div>
+                      </div>
 
                   {/* Slot breakdown */}
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
@@ -2343,7 +3390,7 @@ export default function App(){
                         <div style={{fontSize:12,fontWeight:600,color:"var(--text-secondary)",textTransform:"capitalize",marginBottom:8,borderBottom:"1px solid var(--border-color)",paddingBottom:4}}>
                           {slot}
                         </div>
-                        {(selectedShoot.slots[slot]||[]).map(sh=>(
+                        {(localShoot.slots?.[slot]||[]).map(sh=>(
                           <div key={sh.id} style={{background:"var(--bg-secondary)",borderRadius:8,padding:8,marginBottom:6,fontSize:11,border:"1px solid var(--border-color)",position:"relative"}}>
                             <button onClick={()=>removeShotFromShoot(slot,sh.id)} style={{position:"absolute",right:6,top:6,border:"none",background:"none",cursor:"pointer",color:"#f0a090",fontSize:12}}>×</button>
                             <div style={{fontWeight:500,color:"var(--text-primary)",marginBottom:3,maxWidth:"85%"}}>{sh.shot}</div>
@@ -2351,7 +3398,7 @@ export default function App(){
                             {sh.mood && <div style={{color:"var(--text-muted)"}}>◎ {sh.mood} · {sh.light}</div>}
                           </div>
                         ))}
-                        {selectedShoot.slots[slot]?.length===0 && (
+                        {(localShoot.slots?.[slot]||[]).length===0 && (
                           <div style={{
                             border: "1px dashed var(--border-color)",
                             borderRadius: 10,
@@ -2361,24 +3408,7 @@ export default function App(){
                             color: "var(--text-muted)",
                             transition: "all 0.2s",
                             background: "var(--bg-secondary)"
-                          }} onClick={() => {
-                            const defaultConcepts = {
-                              morning: { shot: "morning light overview / coffee pour", loc: "kitchen", mood: "soft", light: "natural", angle: "close-up", props: "mug" },
-                              afternoon: { shot: "workspace setup / screen typing", loc: "desk", mood: "cinematic", light: "soft window", angle: "slow pan", props: "keyboard" },
-                              evening: { shot: "sunset or cozy candle light", loc: "room", mood: "reflective", light: "warm lamp", angle: "static", props: "candle" }
-                            };
-                            const concept = defaultConcepts[slot];
-                            setShoots(ss => ss.map(s => {
-                              if(s.id !== selectedShoot.id) return s;
-                              return {
-                                ...s,
-                                slots: {
-                                  ...s.slots,
-                                  [slot]: [...(s.slots[slot] || []), { ...concept, id: Date.now() }]
-                                }
-                              };
-                            }));
-                          }}
+                          }} onClick={() => handleAddDefaultConcept(slot)}
                             onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-focus)"; e.currentTarget.style.color = "var(--text-primary)"; }}
                             onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-color)"; e.currentTarget.style.color = "var(--text-muted)"; }}
                           >
@@ -2433,9 +3463,11 @@ export default function App(){
                     </div>
                     <button style={S.btn("var(--accent-color)")} onClick={addShotToShoot} disabled={!newShot.shot.trim()}>+ Add Shot to Timeline</button>
                   </div>
-                </div>
-              ) : (
-                <div style={{textAlign:"center",padding:"80px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
+                </>
+              )}
+            </div>
+          ) : (
+            <div style={{textAlign:"center",padding:"80px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
                   <div style={{fontSize:32,opacity:0.2,marginBottom:12}}>🎬</div>
                   <p style={{fontStyle:"italic",fontSize:15,marginBottom:4}}>visual layouts for execution</p>
                   <p style={{fontSize:12}}>Pick or create a shoot session in the sidebar to organize your camera angles.</p>
@@ -2448,7 +3480,7 @@ export default function App(){
         {/* 4. B-ROLL VAULT */}
         {tab==="vault"&&(
           <div className="card-in">
-            <BRollVault vault={vault} setVault={setVault} vaultSearchQuery={vaultSearchQuery} setVaultSearchQuery={setVaultSearchQuery} />
+            <BRollVault vault={vault} setVault={setVault} vaultSearchQuery={vaultSearchQuery} setVaultSearchQuery={setVaultSearchQuery} showToast={showToast} />
           </div>
         )}
 
@@ -2551,11 +3583,30 @@ export default function App(){
 
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
                     <button style={S.btn("var(--text-muted)")} onClick={()=>setAddingJournal(false)}>cancel</button>
-                    <button style={S.btn("var(--accent-color)")} onClick={()=>{
-                      const n={...newJournal, id:Date.now(), createdAt:todayStr, followers:Number(newJournal.followers)||0, posts:Number(newJournal.posts)||0, reach:Number(newJournal.reach)||0, saves:Number(newJournal.saves)||0};
-                      setJournal(prev=>[n,...prev]);
-                      setSelectedJournalId(n.id);
-                      setAddingJournal(false);
+                    <button style={S.btn("var(--accent-color)")} onClick={async ()=>{
+                      try {
+                        const payload = {
+                          weekStart: newJournal.weekStart,
+                          mood: newJournal.mood,
+                          followers: Number(newJournal.followers) || 0,
+                          posts: Number(newJournal.posts) || 0,
+                          reach: Number(newJournal.reach) || 0,
+                          saves: Number(newJournal.saves) || 0,
+                          engagement: String(newJournal.engagement) || "0",
+                          reflection: newJournal.reflection,
+                          wins: newJournal.wins,
+                          lessons: newJournal.lessons,
+                          notes: newJournal.notes || ""
+                        };
+                        const saved = await apiCreateJournalEntry(payload);
+                        setJournal(prev=>[saved,...prev]);
+                        setSelectedJournalId(saved.id);
+                        setAddingJournal(false);
+                        showToast("Journal entry saved successfully.");
+                      } catch(err) {
+                        console.error("[App] Failed to save journal entry:", err);
+                        showToast("Failed to save journal entry.", "error");
+                      }
                     }}>save journal entry</button>
                   </div>
                 </div>
@@ -2634,9 +3685,19 @@ export default function App(){
                       </div>
 
                       <div style={{textAlign:"right"}}>
-                        <button style={S.btn("#f0a090",true)} onClick={()=>{
-                          setJournal(prev=>prev.filter(x=>x.id!==j.id));
-                          setSelectedJournalId(null);
+                        <button style={S.btn("#f0a090",true)} onClick={async ()=>{
+                          if(!confirm("Delete this journal entry?")) return;
+                          try {
+                            await apiDeleteJournalEntry(j.id);
+                            const remaining = journal.filter(x=>x.id!==j.id);
+                            const nextId = remaining[0]?.id || null;
+                            setJournal(remaining);
+                            setSelectedJournalId(nextId);
+                            showToast("Journal entry deleted.");
+                          } catch(err) {
+                            console.error("[App] Failed to delete journal entry:", err);
+                            showToast("Failed to delete journal entry.", "error");
+                          }
                         }}>Delete check-in</button>
                       </div>
                     </div>
@@ -2788,6 +3849,30 @@ export default function App(){
               )}
             </div>
 
+            {/* Transcript Analyzer Card */}
+            <div style={{marginBottom: 20, background:"var(--bg-secondary)", borderRadius: 16, border:"1px solid var(--border-color)", padding:16}}>
+              <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:10}}>
+                <span style={{fontSize:16}}>📝</span>
+                <span style={S.label}>Transcript Reference Analyzer</span>
+              </div>
+              <p style={{fontSize:12, color:"var(--text-secondary)", marginBottom:10}}>
+                Paste a script transcript from a viral video. The AI will parse its hook, story structure, and pacing beats, saving the structured storyboard template directly to your Brain Dumps.
+              </p>
+              <div style={{display:"flex", flexDirection:"column", gap:10}}>
+                <textarea 
+                  value={transcriptText} 
+                  onChange={e=>setTranscriptText(e.target.value)} 
+                  style={{...S.textarea, minHeight: 100, fontFamily: "var(--font-sans)", fontSize: 13}} 
+                  placeholder="Paste video transcript here (e.g. line-by-line spoken words)..."
+                />
+                <div style={{display:"flex", justifyContent:"flex-end"}}>
+                  <button onClick={handleParseTranscript} disabled={parsingTranscript || !transcriptText.trim()} style={S.btn("var(--accent-color)", true)}>
+                    {parsingTranscript ? "✨ Parsing Script beats..." : "✨ Parse Script Structure"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:20}}>
               {/* Trends List Column */}
               <div>
@@ -2828,12 +3913,14 @@ export default function App(){
                         <div style={S.row}>
                           {t.visualTags.map(tg=><span key={tg} style={{fontSize:10,padding:"1px 6px",borderRadius:20,background:"var(--accent-light)",color:"var(--accent-dark)"}}>#{tg}</span>)}
                         </div>
-                        {/* Find B-roll Link action */}
-                        <button style={S.btn("var(--accent-color)",true)} onClick={()=>{
-                          const searchTag = t.visualTags[0];
-                          setVaultSearchQuery(searchTag);
-                          setTab("vault");
-                        }}>🔍 Find B-Roll in Vault</button>
+                        <div style={S.row}>
+                          <button style={S.btn("var(--accent-color)",true)} onClick={()=>{
+                            const searchTag = t.visualTags[0];
+                            setVaultSearchQuery(searchTag);
+                            setTab("vault");
+                          }}>🔍 Find B-Roll in Vault</button>
+                          <button style={S.btn("var(--accent-dark)",true)} onClick={() => handleRecreateTrend(t)}>⚡ Recreate Trend</button>
+                        </div>
                       </div>
                     </div>
                   ))
@@ -2883,7 +3970,7 @@ export default function App(){
       </div>
 
       {/* Relocated Edit Post Modal (Fixed Position relative to Viewport) */}
-      {selectedPost&&(
+      {selectedPost&&localPost&&(
         <div style={{
           position: "fixed",
           top: 0,
@@ -2897,7 +3984,7 @@ export default function App(){
           justifyContent: "center",
           zIndex: 1000,
           padding: "20px"
-        }} onClick={() => setSelectedPost(null)}>
+        }} onClick={handleCancelPost}>
           <div className="card-in" style={{
             ...S.card,
             width: "100%",
@@ -2909,43 +3996,368 @@ export default function App(){
             margin: 0
           }} onClick={e => e.stopPropagation()}>
             <div style={{...S.row,justifyContent:"space-between",marginBottom:16}}>
-              <input value={selectedPost.title} onChange={e=>updatePost(selectedPost.id,{title:e.target.value})} style={{...S.input,fontSize:16,fontWeight:500,border:"none",background:"transparent",padding:0,flex:1}}/>
-              <button onClick={()=>setSelectedPost(null)} style={{...S.ghost,fontSize:20,color:"var(--text-muted)"}}>×</button>
+              <input value={localPost.title} onChange={e=>{ setLocalPost(prev=>({...prev,title:e.target.value})); setPostIsDirty(true); }} style={{...S.input,fontSize:16,fontWeight:500,border:"none",background:"transparent",padding:0,flex:1}}/>
+              <button onClick={handleCancelPost} style={{...S.ghost,fontSize:20,color:"var(--text-muted)"}}>×</button>
             </div>
             <div style={S.grid2}>
-              <div><span style={S.label}>date</span><input type="date" value={selectedPost.date||""} style={S.input} onChange={e=>updatePost(selectedPost.id,{date:e.target.value})}/></div>
-              <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=><button key={t} onClick={()=>updatePost(selectedPost.id,{type:t})} style={{...S.btn(selectedPost.type===t?"var(--accent-color)":"var(--border-color)",true),background:selectedPost.type===t?"var(--accent-light)":"transparent"}}>{TYPE_ICONS[t]} {t}</button>)}</div></div>
+              <div><span style={S.label}>date</span><input type="date" value={localPost.date||""} style={S.input} onChange={e=>{ setLocalPost(prev=>({...prev,date:e.target.value})); setPostIsDirty(true); }}/></div>
+              <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=><button key={t} onClick={()=>{ setLocalPost(prev=>({...prev,type:t})); setPostIsDirty(true); }} style={{...S.btn(localPost.type===t?"var(--accent-color)":"var(--border-color)",true),background:localPost.type===t?"var(--accent-light)":"transparent"}}>{TYPE_ICONS[t]} {t}</button>)}</div></div>
             </div>
-            <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=><button key={st} onClick={()=>updatePost(selectedPost.id,{status:st})} style={{...S.btn(STATUS_COLORS[st],true),background:selectedPost.status===st?STATUS_COLORS[st]+"20":"transparent"}}>{st==="posted"?"released ✦":st==="archived"?"archived":st}</button>)}</div></div>
-            <div style={{marginTop:12}}><span style={S.label}>mood</span><MoodPicker value={selectedPost.mood} onChange={m=>updatePost(selectedPost.id,{mood:m})}/></div>
+            <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=><button key={st} onClick={()=>{ setLocalPost(prev=>({...prev,status:st})); setPostIsDirty(true); }} style={{...S.btn(STATUS_COLORS[st],true),background:localPost.status===st?STATUS_COLORS[st]+"20":"transparent"}}>{st==="posted"?"released ✦":st==="archived"?"archived":st}</button>)}</div></div>
+            <div style={{marginTop:12}}><span style={S.label}>mood</span><MoodPicker value={localPost.mood} onChange={m=>{ setLocalPost(prev=>({...prev,mood:m})); setPostIsDirty(true); }}/></div>
             <div style={{marginTop:12}}><span style={S.label}>linked shoot</span>
               <div style={S.row}>
-                <select value={selectedPost.shootId||""} style={{...S.input,flex:1,cursor:"pointer"}} onChange={e=>updatePost(selectedPost.id,{shootId:e.target.value?Number(e.target.value):null})}>
+                <select value={localPost.shootId||""} style={{...S.input,flex:1,cursor:"pointer"}} onChange={e=>{ setLocalPost(prev=>({...prev,shootId:e.target.value || null})); setPostIsDirty(true); }}>
                   <option value="">no shoot linked</option>
                   {shoots.map(s=><option key={s.id} value={s.id}>{s.name}{s.shootDate?" · "+friendlyDate(s.shootDate):""}</option>)}
                 </select>
-                {selectedPost.shootId&&<button style={S.btn("#a0b8c8",true)} onClick={()=>{setSelectedShootId(selectedPost.shootId);setTab("shoot");setSelectedPost(null);}}>open →</button>}
-                <button style={S.btn("#d4c5e2",true)} onClick={()=>{const ns={id:Date.now(),name:selectedPost.title+" — shoot",shootDate:selectedPost.date||todayStr,postId:selectedPost.id,slots:getSuggestedShotsForMood(selectedPost.mood)};setShoots(ss=>[...ss,ns]);updatePost(selectedPost.id,{shootId:ns.id});setSelectedShootId(ns.id);setSelectedPost(null);}}>+ create shoot</button>
+                {localPost.shootId&&<button style={S.btn("#a0b8c8",true)} onClick={()=>{setSelectedShootId(localPost.shootId);setTab("shoot");setSelectedPost(null);}}>open →</button>}
+                <button style={S.btn("#d4c5e2",true)} onClick={async ()=>{
+                  try {
+                    const ns = await apiCreateShoot({
+                      name: (localPost.title || "untitled") + " — shoot",
+                      shootDate: localPost.date || todayStr,
+                      postId: localPost.id,
+                      slots: getSuggestedShotsForMood(localPost.mood)
+                    });
+                    setShoots(ss=>[...ss,ns]);
+                    setLocalPost(prev=>({...prev,shootId:ns.id}));
+                    setPostIsDirty(true);
+                    setSelectedShootId(ns.id);
+                  } catch (err) {
+                    console.error("Failed to create shoot for post:", err);
+                    showToast("Failed to create shoot.", "error");
+                  }
+                }}>+ create shoot</button>
               </div>
             </div>
             <div style={{marginTop:14}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                 <span style={S.label}>caption & ideas</span>
-                <button onClick={generatePostIdeasAI} disabled={aiGeneratingPostIdeas} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
-                  {aiGeneratingPostIdeas ? "✨ Generating..." : "✨ AI Thumbnails & Hooks"}
-                </button>
+                {!tryParseJSON(selectedPost?.caption) && (
+                  <button onClick={generatePostIdeasAI} disabled={aiGeneratingPostIdeas} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
+                    {aiGeneratingPostIdeas ? "✨ Generating..." : "✨ AI Thumbnails & Hooks"}
+                  </button>
+                )}
               </div>
-              <textarea value={selectedPost.caption} style={S.textarea} placeholder="what do you want to say..." onChange={e=>updatePost(selectedPost.id,{caption:e.target.value})}/>
+              
+              {aiGeneratingPostIdeas ? (
+                <div style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 180,
+                  background: "var(--bg-secondary)",
+                  borderRadius: 12,
+                  border: "1px dashed var(--accent-color)",
+                  padding: 16,
+                  textAlign: "center"
+                }}>
+                  <div style={{ fontSize: 24, marginBottom: 12, animation: "bounce-cinematic 2s infinite ease-in-out" }}>⚡</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: 4 }}>
+                    Generating Hooks & Creative Angles...
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 280 }}>
+                    Consulting viral structures, emotional hooks, and B-roll scripts.
+                  </div>
+                </div>
+              ) : (() => {
+                const parsed = tryParseJSON(selectedPost?.caption);
+                if (parsed) {
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 12, padding: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{
+                            background: "linear-gradient(135deg, var(--accent-color) 0%, var(--accent-dark) 100%)",
+                            color: "#FFFFFF",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: 6,
+                            letterSpacing: "0.05em",
+                            textTransform: "uppercase"
+                          }}>
+                            AI: {parsed.mode ? parsed.mode.toUpperCase() : "MOCK"}
+                          </span>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Structured Hooks Studio</span>
+                        </div>
+                        <button 
+                          onClick={() => updatePost(selectedPost?.id, { caption: parsed.hooks?.[0] || "" })} 
+                          style={{ ...S.ghost, color: "#f0a090", fontSize: 10, border: "1px solid rgba(240, 160, 144, 0.4)", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
+                        >
+                          Reset to Editor
+                        </button>
+                      </div>
+
+                      {parsed.titleIdeas && parsed.titleIdeas.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Title Ideas</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {parsed.titleIdeas.map((tText, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "6px 10px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span>{tText}</span>
+                                <button onClick={() => { navigator.clipboard.writeText(tText); alert("Title copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}>Copy</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.hooks && parsed.hooks.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Viral Hook Variations</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {parsed.hooks.map((hook, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "10px 12px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontStyle: "italic", fontFamily: "var(--font-serif)", lineHeight: 1.4 }}>{hook}</span>
+                                <button onClick={() => { navigator.clipboard.writeText(hook); alert("Hook copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10, flexShrink: 0 }}>Copy</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.openingShots && parsed.openingShots.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Opening B-Roll Shot Suggestions</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {parsed.openingShots.map((shot, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "8px 10px", borderRadius: 8, fontSize: 11, color: "var(--text-primary)", borderLeft: "2px solid var(--accent-color)" }}>
+                                {shot}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.emotionalAngles && parsed.emotionalAngles.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Emotional Hooks</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {parsed.emotionalAngles.map((angle, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "6px 10px", borderRadius: 8, fontSize: 11, color: "var(--text-secondary)" }}>
+                                {angle}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.ctas && parsed.ctas.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Creator CTAs</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {parsed.ctas.map((ctaVal, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "6px 10px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span>{ctaVal}</span>
+                                <button onClick={() => { navigator.clipboard.writeText(ctaVal); alert("CTA copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}>Copy</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.hashtags && parsed.hashtags.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Optimized Hashtags</span>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {parsed.hashtags.map((tag, idx) => (
+                              <span key={idx} onClick={() => { navigator.clipboard.writeText(`#${tag}`); alert(`#${tag} copied!`); }} style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", padding: "2px 8px", borderRadius: 10, fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}>
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else {
+                  return (
+                    <>
+                      <textarea value={localPost.caption || ""} style={S.textarea} placeholder="what do you want to say..." onChange={e=>{ setLocalPost(prev=>({...prev,caption:e.target.value})); setPostIsDirty(true); }}/>
+                      <div style={{marginTop:10}}><span style={S.label}>hashtags</span><textarea value={localPost.hashtags || ""} style={{...S.textarea,minHeight:46}} placeholder="#yourhashtags" onChange={e=>{ setLocalPost(prev=>({...prev,hashtags:e.target.value})); setPostIsDirty(true); }}/></div>
+                    </>
+                  );
+                }
+              })()}
             </div>
-            <div style={{marginTop:10}}><span style={S.label}>hashtags</span><textarea value={selectedPost.hashtags} style={{...S.textarea,minHeight:46}} placeholder="#yourhashtags" onChange={e=>updatePost(selectedPost.id,{hashtags:e.target.value})}/></div>
-            <div style={{...S.row,justifyContent:"flex-end",marginTop:14}}>
-              <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(selectedPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
-              <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(selectedPost.id)}>delete forever</button>
+
+            <div style={{marginTop:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <span style={S.label}>AI Caption Studio</span>
+                {!tryParseJSON(selectedPost?.notes) && (
+                  <button onClick={generateCaptionsAI} disabled={aiGeneratingCaptions} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
+                    {aiGeneratingCaptions ? "✨ Generating..." : "✨ AI Caption Studio"}
+                  </button>
+                )}
+              </div>
+              
+              {aiGeneratingCaptions ? (
+                <div style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 180,
+                  background: "var(--bg-secondary)",
+                  borderRadius: 12,
+                  border: "1px dashed var(--accent-color)",
+                  padding: 16,
+                  textAlign: "center"
+                }}>
+                  <div style={{ fontSize: 24, marginBottom: 12, animation: "bounce-cinematic 2s infinite ease-in-out" }}>✍️</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: 4 }}>
+                    Generating Captions & CTAs...
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 280 }}>
+                    Structuring short & storytelling formats, CTA variations, and hashtag clusters.
+                  </div>
+                </div>
+              ) : (() => {
+                const parsed = tryParseJSON(selectedPost?.notes);
+                if (parsed) {
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 12, padding: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{
+                            background: "linear-gradient(135deg, var(--accent-color) 0%, var(--accent-dark) 100%)",
+                            color: "#FFFFFF",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: 6,
+                            letterSpacing: "0.05em",
+                            textTransform: "uppercase"
+                          }}>
+                            AI: {parsed.mode ? parsed.mode.toUpperCase() : "MOCK"}
+                          </span>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Caption Studio</span>
+                        </div>
+                        <button 
+                          onClick={() => updatePost(selectedPost?.id, { notes: "" })} 
+                          style={{ ...S.ghost, color: "#f0a090", fontSize: 10, border: "1px solid rgba(240, 160, 144, 0.4)", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
+                        >
+                          Reset to Editor
+                        </button>
+                      </div>
+
+                      {parsed.shortCaptions && parsed.shortCaptions.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Short Captions (High Impact)</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {parsed.shortCaptions.map((capText, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "10px 12px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                <span style={{ lineHeight: 1.4 }}>{capText}</span>
+                                <button onClick={() => { navigator.clipboard.writeText(capText); alert("Caption copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10, flexShrink: 0 }}>Copy</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {(parsed.longCaptions || parsed.storytellingCaptions) && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Long Storytelling Captions</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {[]
+                              .concat(parsed.longCaptions || [])
+                              .concat(parsed.storytellingCaptions || [])
+                              .filter(Boolean)
+                              .map((capText, idx) => (
+                                <div key={idx} style={{ background: "var(--bg-primary)", padding: "12px 14px", borderRadius: 8, fontSize: 12, position: "relative" }}>
+                                  <span style={{ whiteSpace: "pre-wrap", display: "block", paddingRight: 40, lineHeight: 1.5 }}>{capText}</span>
+                                  <button 
+                                    onClick={() => { navigator.clipboard.writeText(capText); alert("Caption copied!"); }} 
+                                    style={{ position: "absolute", right: 12, top: 12, ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.ctas && parsed.ctas.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Engagement CTAs</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {parsed.ctas.map((ctaText, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "8px 10px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span>{ctaText}</span>
+                                <button onClick={() => { navigator.clipboard.writeText(ctaText); alert("CTA copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}>Copy</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.hashtagGroups && parsed.hashtagGroups.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Hashtag Groups</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {parsed.hashtagGroups.map((group, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "10px 12px", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                  {group.map((tag, tIdx) => (
+                                    <span key={tIdx} style={{ fontSize: 11, color: "var(--text-muted)" }}>#{tag}</span>
+                                  ))}
+                                </div>
+                                <button 
+                                  onClick={() => { 
+                                    navigator.clipboard.writeText(group.map(t => `#${t}`).join(" ")); 
+                                    alert("Hashtag group copied!"); 
+                                  }} 
+                                  style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10, flexShrink: 0 }}
+                                >
+                                  Copy Group
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parsed.postingTips && parsed.postingTips.length > 0 && (
+                        <div>
+                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Posting Guidelines & Strategy</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {parsed.postingTips.map((tip, idx) => (
+                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "8px 10px", borderRadius: 8, fontSize: 11, color: "var(--text-primary)", borderLeft: "2px solid var(--accent-color)" }}>
+                                {tip}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else {
+                  return (
+                    <>
+                      <textarea value={localPost.notes || ""} style={{ ...S.textarea, minHeight: 60 }} placeholder="B-roll guidelines, raw caption drafting notes..." onChange={e=>{ setLocalPost(prev=>({...prev,notes:e.target.value})); setPostIsDirty(true); }}/>
+                    </>
+                  );
+                }
+              })()}
+            </div>
+            <div style={{...S.row,justifyContent:"flex-end",marginTop:14,gap:10}}>
+              <SaveButton label="Save Post" isDirty={postIsDirty} saving={savingPost} onClick={handleSavePost} />
+              {postIsDirty && (
+                <button style={S.btn("var(--text-muted)", true)} onClick={handleResetPost}>Reset</button>
+              )}
+              <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(localPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
+              <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(localPost.id)}>delete forever</button>
+              <button style={S.btn("var(--text-muted)",true)} onClick={handleCancelPost}>cancel</button>
             </div>
           </div>
         </div>
       )}
 
+      {toast && <SaveToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
