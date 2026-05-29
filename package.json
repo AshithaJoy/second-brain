@@ -8,7 +8,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "all": "concurrently \"npm run dev\" \"npm run dev --prefix ../second-brain-backend\""
+    "all": "concurrently \"npm run dev\" \"npm run dev --prefix ../second-brain-backend\"",
+    "test:e2e": "playwright test",
+    "test": "npm run lint",
+    "test:full": "npm run test && npm run test:e2e && node scripts/generate_test_report.js"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",
