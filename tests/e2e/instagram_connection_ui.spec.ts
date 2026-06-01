@@ -53,6 +53,23 @@ test.describe("Instagram Connection UI E2E Flow", () => {
     const connectBtn = igCardNotConnected.locator("[data-test-id='ig-connect-btn']");
     await expect(connectBtn).toBeVisible();
 
+    // Intercept OAuth start API call to force mock redirect in E2E tests
+    await page.route("**/api/instagram/oauth/start*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      const urlObj = new URL(route.request().url());
+      const state = urlObj.searchParams.get("state") || "mock_state";
+      
+      // Override the live URL with the mock connect URL
+      body.url = `${BASE_URL}/settings?instagram_mock_connect=true&state=${state}`;
+      
+      await route.fulfill({
+        response,
+        contentType: "application/json",
+        body: JSON.stringify(body)
+      });
+    });
+
     // 4. Click Connect Instagram to start OAuth simulation
     await connectBtn.click();
 
