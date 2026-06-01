@@ -117,6 +117,7 @@ export default function Login({ onSwitchToRegister }) {
             </label>
             <input
               type="email"
+              data-test-id="email-input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="creator@secondbrain.ai"
@@ -148,6 +149,7 @@ export default function Login({ onSwitchToRegister }) {
             </label>
             <input
               type="password"
+              data-test-id="password-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
@@ -168,6 +170,7 @@ export default function Login({ onSwitchToRegister }) {
 
           <button
             type="submit"
+            data-test-id="login-button"
             disabled={loading}
             style={{
               width: "100%",
@@ -217,6 +220,7 @@ export default function Login({ onSwitchToRegister }) {
             theme="filled_black"
             text="continue_with"
             shape="rectangular"
+            ux_mode="popup"
           />
         </div>
 

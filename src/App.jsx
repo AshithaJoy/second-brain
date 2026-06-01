@@ -46,6 +46,24 @@ import {
   deleteJournalEntry as apiDeleteJournalEntry
 } from "./api/journal.api";
 import { SaveButton, SaveToast } from "./components/SaveUX";
+import {
+  connectInstagram as apiConnectInstagram,
+  getInstagramProfile as apiGetInstagramProfile,
+  getInstagramMedia as apiGetInstagramMedia,
+  disconnectInstagram as apiDisconnectInstagram,
+  syncInstagram as apiSyncInstagram,
+  getInstagramIntelligence as apiGetInstagramIntelligence,
+  getInstagramOAuthUrl as apiGetInstagramOAuthUrl
+} from "./api/instagram.api";
+import {
+  getProfile as apiGetProfile,
+  saveProfile as apiSaveProfile,
+  updateProfile as apiUpdateProfile,
+  getProfileCompletionStatus as apiGetProfileCompletionStatus
+} from "./api/profile.api";
+import InstagramConnectionCard from "./components/InstagramConnectionCard";
+
+
 
 // ── constants ──────────────────────────────────────────────────────────────────
 const MOODS = ["cinematic","soft","chaotic","reflective","motivated","low-energy","rebuilding","funny","existential"];
@@ -517,7 +535,7 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery,showToa
           <ChipSelect label="lighting"     options={LIGHTING_OPTIONS}  value={form.lighting}    onChange={v=>updateForm({lighting:v})}/>
           <ChipSelect label="motion type"  options={MOTION_TYPES}      value={form.motionType}  onChange={v=>updateForm({motionType:v})}/>
         </div>
-        <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div className="form-grid-2" style={{marginTop:12}}>
           <div>
             <span style={S.label}>location</span>
             <input value={form.location} onChange={e=>updateForm({location:e.target.value})} placeholder="bedroom, street, gym..." style={S.input}/>
@@ -624,7 +642,7 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery,showToa
 
       {showFilters&&(
         <div style={{...S.card,marginBottom:16,padding:"14px 18px"}} className="card-in">
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+          <div className="form-grid-3">
             <ChipSelect label="mood"         options={VAULT_MOODS}    value={filterMood}   onChange={setFilterMood}/>
             <ChipSelect label="cinematic use" options={CINEMATIC_USES} value={filterUse}    onChange={setFilterUse}/>
             <ChipSelect label="energy"        options={ENERGY_LEVELS}  value={filterEnergy} onChange={setFilterEnergy}/>
@@ -734,11 +752,146 @@ export default function App(){
   const logout = useAuthStore((state) => state.logout);
 
   const [tab,      setTabRaw]    = useState(()=>load(STORAGE.tab,"planner"));
+  const [profile, setProfile] = useState(null);
+  const [profileStatus, setProfileStatus] = useState({ complete: false, score: 0, checklist: {} });
+  const [showWizard, setShowWizard] = useState(false);
+  const [skipWizard, setSkipWizard] = useState(() => localStorage.getItem("sb-skip-onboarding") === "true");
+
+  const [wizardStep, setWizardStep] = useState(1);
+  const [wizardForm, setWizardForm] = useState({
+    primaryNiche: "Other",
+    secondaryNiches: [],
+    primaryGoal: "Grow Followers",
+    audienceSize: "0–1k",
+    creatorStage: "Just Starting",
+    postingFrequency: "Weekly",
+    preferredFormats: ["Reels"],
+    contentPillars: ["Lifestyle"],
+    toneOfVoice: "Friendly",
+    biggestChallenge: "Consistency",
+    aiAssistanceLevel: "Balanced"
+  });
+
+  const fetchProfileData = useCallback(async () => {
+    if (!user) return;
+    try {
+      const status = await apiGetProfileCompletionStatus();
+      setProfileStatus(status);
+      
+      const isSkipped = localStorage.getItem("sb-skip-onboarding") === "true";
+      setSkipWizard(isSkipped);
+      
+      if (!status.complete && !isSkipped) {
+        setShowWizard(true);
+      } else {
+        setShowWizard(false);
+      }
+
+      const prof = await apiGetProfile().catch(() => null);
+      if (prof) {
+        setProfile(prof);
+        
+        const parseJsonArray = (val) => {
+          if (!val) return [];
+          if (typeof val === "string") {
+            try {
+              return JSON.parse(val);
+            } catch (e) {
+              return [];
+            }
+          }
+          return Array.isArray(val) ? val : [];
+        };
+
+        setWizardForm({
+          primaryNiche: prof.primaryNiche || "Other",
+          secondaryNiches: parseJsonArray(prof.secondaryNiches),
+          primaryGoal: prof.primaryGoal || "Grow Followers",
+          audienceSize: prof.audienceSize || "0–1k",
+          creatorStage: prof.creatorStage || "Just Starting",
+          postingFrequency: prof.postingFrequency || "Weekly",
+          preferredFormats: parseJsonArray(prof.preferredFormats).length > 0 ? parseJsonArray(prof.preferredFormats) : ["Reels"],
+          contentPillars: parseJsonArray(prof.contentPillars).length > 0 ? parseJsonArray(prof.contentPillars) : ["Lifestyle"],
+          toneOfVoice: prof.toneOfVoice || "Friendly",
+          biggestChallenge: prof.biggestChallenge || "Consistency",
+          aiAssistanceLevel: prof.aiAssistanceLevel || "Balanced"
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load profile details:", err);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchProfileData();
+    } else {
+      setProfile(null);
+      setProfileStatus({ complete: false, score: 0, checklist: {} });
+      setShowWizard(false);
+    }
+  }, [user, fetchProfileData]);
+
+  const handleSaveWizardProgress = async (updatedForm) => {
+    try {
+      const saved = await apiSaveProfile(updatedForm);
+      setProfile(saved);
+      const status = await apiGetProfileCompletionStatus();
+      setProfileStatus(status);
+    } catch (err) {
+      console.error("Failed to auto-save wizard progress:", err);
+    }
+  };
+
+  const handleSkipWizard = () => {
+    localStorage.setItem("sb-skip-onboarding", "true");
+    setSkipWizard(true);
+    setShowWizard(false);
+    showToast("Creator DNA skipped. You can complete it in Settings at any time.");
+  };
+
+  const toggleSecondaryNiche = (niche) => {
+    setWizardForm(prev => {
+      const active = prev.secondaryNiches.includes(niche);
+      const updated = active 
+        ? prev.secondaryNiches.filter(x => x !== niche)
+        : [...prev.secondaryNiches, niche];
+      handleSaveWizardProgress({ ...prev, secondaryNiches: updated });
+      return { ...prev, secondaryNiches: updated };
+    });
+  };
+
+  const togglePreferredFormat = (format) => {
+    setWizardForm(prev => {
+      const active = prev.preferredFormats.includes(format);
+      const updated = active
+        ? prev.preferredFormats.filter(x => x !== format)
+        : [...prev.preferredFormats, format];
+      handleSaveWizardProgress({ ...prev, preferredFormats: updated });
+      return { ...prev, preferredFormats: updated };
+    });
+  };
+
+  const toggleContentPillar = (pillar) => {
+    setWizardForm(prev => {
+      const active = prev.contentPillars.includes(pillar);
+      if (!active && prev.contentPillars.length >= 5) {
+        showToast("⚠️ Maximum 5 content pillars allowed.", "error");
+        return prev;
+      }
+      const updated = active
+        ? prev.contentPillars.filter(x => x !== pillar)
+        : [...prev.contentPillars, pillar];
+      handleSaveWizardProgress({ ...prev, contentPillars: updated });
+      return { ...prev, contentPillars: updated };
+    });
+  };
   const [posts,    setPosts]     = useState([]);
   const [dumps,    setDumps]     = useState([]);
   const [shoots,   setShoots]    = useState([]);
   const [vault,    setVault]     = useState([]);
   const [journal,  setJournal]   = useState([]);
+  const [selectedJournalId, setSelectedJournalId] = useState(null);
   const [collabs,  setCollabs]   = useState([]);
   const [theme,    setThemeRaw]  = useState(()=>load(STORAGE.theme,"light"));
   const [activeNiche, setActiveNiche] = useState(()=>load(STORAGE.niche, NICHES[0].id));
@@ -750,6 +903,284 @@ export default function App(){
   const [toast, setToast] = useState(null);
   const [shootMode, setShootMode] = useState(false);
   const [completedShots, setCompletedShots] = useState({});
+
+  // Instagram Integration States
+  const [igAccessToken, setIgAccessToken] = useState("");
+  const [igMedia, setIgMedia] = useState(null);
+  const [igLoading, setIgLoading] = useState(false);
+  const [igError, setIgError] = useState("");
+  const [ideaTab, setIdeaTab] = useState("reels");
+  const [intelligence, setIntelligence] = useState(null);
+  const [intelLoading, setIntelLoading] = useState(false);
+
+  // Syncing & Dashboard states
+  const [syncingState, setSyncingState] = useState(false);
+  const [syncStep, setSyncStep] = useState(0); // 0: None, 1: Profile, 2: Posts, 3: Analytics
+  const [showIgDisconnectModal, setShowIgDisconnectModal] = useState(false);
+
+  // Analytics event tracking logger (10 custom events)
+  const trackAnalyticsEvent = (name, data = {}) => {
+    console.log(`[Analytics Event] ${name}:`, data);
+    window.analyticsEvents = window.analyticsEvents || [];
+    window.analyticsEvents.push({ name, data, timestamp: new Date().toISOString() });
+  };
+
+  const getFriendlyLastSync = () => {
+    if (!user?.instagramConnectedAt) return "Never";
+    const diffMs = Date.now() - new Date(user.instagramConnectedAt).getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "Just now";
+    if (diffMins === 1) return "1 minute ago";
+    if (diffMins < 60) return `${diffMins} minutes ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours === 1) return "1 hour ago";
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    return new Date(user.instagramConnectedAt).toLocaleDateString();
+  };
+
+  const fetchInstagramIntelligence = useCallback(async () => {
+    setIntelLoading(true);
+    try {
+      const data = await apiGetInstagramIntelligence();
+      setIntelligence(data);
+      trackAnalyticsEvent("instagram_intelligence_generated");
+    } catch (err) {
+      console.error("Error fetching Instagram intelligence:", err);
+      setIntelligence(null);
+    } finally {
+      setIntelLoading(false);
+    }
+  }, []);
+
+  const handleFetchInstagramMedia = async () => {
+    setIgLoading(true);
+    setIgError("");
+    try {
+      const media = await apiGetInstagramMedia();
+      setIgMedia(media.data || []);
+    } catch (err) {
+      setIgError(err.response?.data?.error || "Failed to fetch media");
+    } finally {
+      setIgLoading(false);
+    }
+  };
+
+  const runSyncSteps = async () => {
+    setSyncingState(true);
+    setSyncStep(1); // Profile
+    trackAnalyticsEvent("instagram_sync_started");
+
+    try {
+      await new Promise(r => setTimeout(r, 800));
+      setSyncStep(2); // Posts
+
+      await new Promise(r => setTimeout(r, 800));
+      setSyncStep(3); // Analytics
+
+      const result = await apiSyncInstagram();
+      await new Promise(r => setTimeout(r, 600));
+
+      setSyncStep(4);
+      setSyncingState(false);
+
+      if (result.instagramUsername) {
+        useAuthStore.getState().updateUser({
+          instagramUsername: result.instagramUsername,
+          instagramConnectedAt: new Date().toISOString()
+        });
+      }
+
+      await handleFetchInstagramMedia();
+      await fetchInstagramIntelligence();
+
+      trackAnalyticsEvent("instagram_sync_completed", { postsCount: result.syncedPosts });
+      showToast("Instagram channel synced successfully!");
+    } catch (err) {
+      console.error("Error syncing Instagram:", err);
+      const errorMsg = err.response?.data?.error || err.message || "Failed to sync Instagram account";
+      setIgError(errorMsg);
+      setSyncingState(false);
+      setSyncStep(0);
+      trackAnalyticsEvent("instagram_sync_failed", { error: errorMsg });
+      showToast(`Sync failed: ${errorMsg}`, "error");
+    }
+  };
+
+  const handleSyncInstagram = async () => {
+    await runSyncSteps();
+  };
+
+  const handleAddIdeaToPlanner = async (idea, type) => {
+    try {
+      const typeMapping = { reels: "REEL", carousels: "CAROUSEL", stories: "STORY" };
+      const payload = {
+        title: idea.title || `AI Suggested ${type}`,
+        date: todayStr,
+        type: typeMapping[type] || "REEL",
+        status: "DRAFT",
+        mood: "inspired",
+        caption: idea.suggestedHook ? `Hook: ${idea.suggestedHook}\n\nConcept: ${idea.concept}\n\n${idea.caption || ""}` : (idea.concept || ""),
+        hashtags: ""
+      };
+      const newPost = await apiCreatePost(payload);
+      setPosts(prev => [...prev, newPost]);
+      showToast(`Added "${payload.title}" as draft to Content Planner!`);
+      trackAnalyticsEvent("instagram_add_to_planner", { ideaId: idea.id, title: idea.title });
+    } catch (err) {
+      console.error("Error adding idea to planner:", err);
+      showToast("Failed to add draft post to planner.");
+    }
+  };
+
+  const handleInstagramConnectClick = async () => {
+    trackAnalyticsEvent("instagram_connect_started");
+    setIgLoading(true);
+    setIgError("");
+    try {
+      const state = Math.random().toString(36).substring(2, 15);
+      const { url } = await apiGetInstagramOAuthUrl(state);
+
+      if (url.includes("instagram_mock_connect=true")) {
+        const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        window.location.href = `${apiBaseUrl}/api/instagram/oauth/callback?code=mock_code_888&state=${state}`;
+      } else {
+        window.location.href = url;
+      }
+    } catch (err) {
+      console.error("Failed to start Instagram connection:", err);
+      const errMsg = err.response?.data?.error || err.message || "Failed to start connection";
+      setIgError(errMsg);
+      trackAnalyticsEvent("instagram_connection_failed", { error: errMsg });
+      showToast(errMsg, "error");
+      setIgLoading(false);
+    }
+  };
+
+  const handleConnectInstagram = async () => {
+    if (!igAccessToken.trim()) return;
+    setIgLoading(true);
+    setIgError("");
+    trackAnalyticsEvent("instagram_token_connect_started");
+    try {
+      const result = await apiConnectInstagram(igAccessToken);
+      useAuthStore.getState().updateUser({
+        instagramUsername: result.username || "mock_creator_partner",
+        instagramConnectedAt: new Date().toISOString()
+      });
+      setIgAccessToken("");
+      showToast("Instagram account connected! Syncing content...");
+      await runSyncSteps();
+    } catch (err) {
+      console.error("Failed to connect Instagram:", err);
+      const errMsg = err.response?.data?.error || err.message || "Connection failed";
+      setIgError(errMsg);
+      trackAnalyticsEvent("instagram_token_connect_failed", { error: errMsg });
+      showToast(errMsg, "error");
+    } finally {
+      setIgLoading(false);
+    }
+  };
+
+  const handleInstagramDisconnectClick = () => {
+    setShowIgDisconnectModal(true);
+  };
+
+  const handleInstagramDisconnectConfirm = async () => {
+    setIgLoading(true);
+    try {
+      await apiDisconnectInstagram();
+      useAuthStore.getState().updateUser({
+        instagramUserId: null,
+        instagramUsername: null,
+        instagramConnectedAt: null
+      });
+      setIgMedia(null);
+      setIntelligence(null);
+      showToast("Instagram account disconnected.");
+    } catch (err) {
+      showToast("Failed to disconnect", "error");
+    } finally {
+      setIgLoading(false);
+    }
+  };
+
+  const handleAutoSyncAfterConnection = async () => {
+    setSyncingState(true);
+    setSyncStep(1); // Fetching profile
+    setTab("settings"); // Hold on settings page to show connection card sync state checklist
+
+    try {
+      await useAuthStore.getState().restoreSession();
+      await new Promise(r => setTimeout(r, 800));
+      setSyncStep(2); // Fetching posts
+
+      await new Promise(r => setTimeout(r, 800));
+      setSyncStep(3); // Fetching analytics
+
+      const result = await apiSyncInstagram();
+      await new Promise(r => setTimeout(r, 600));
+
+      setSyncStep(4);
+      setSyncingState(false);
+
+      await handleFetchInstagramMedia();
+      await fetchInstagramIntelligence();
+
+      trackAnalyticsEvent("instagram_sync_completed", { postsCount: result.syncedPosts });
+      showToast("Instagram connected successfully and content analyzed!");
+      
+      // Auto redirect to dashboard view
+      setTab("instagram");
+    } catch (err) {
+      console.error("Auto sync error:", err);
+      const errorMsg = err.response?.data?.error || err.message || "Failed to auto sync";
+      setIgError(errorMsg);
+      setSyncingState(false);
+      setSyncStep(0);
+      trackAnalyticsEvent("instagram_sync_failed", { error: errorMsg });
+      showToast(`Auto-sync failed: ${errorMsg}`, "error");
+    }
+  };
+
+  // URL query parameter callback handling effect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mockConnect = params.get("instagram_mock_connect");
+    const connectSuccess = params.get("instagram_connect");
+    const connectError = params.get("instagram_error");
+
+    if (mockConnect === "true" || connectSuccess === "success") {
+      trackAnalyticsEvent("instagram_oauth_callback_received", { success: true, mock: mockConnect === "true" });
+      
+      // Clean query parameters from address bar
+      const newUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+      
+      showToast("Instagram account connected! Initializing auto sync...");
+      handleAutoSyncAfterConnection();
+    } else if (connectError) {
+      trackAnalyticsEvent("instagram_oauth_callback_received", { success: false, error: connectError });
+      
+      const newUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+      
+      setIgError(connectError);
+      showToast(`Instagram connection failed: ${connectError}`, "error");
+      trackAnalyticsEvent("instagram_connection_failed", { error: connectError });
+    }
+  }, []);
+
+  // Standard component mount/refresh updates hook
+  useEffect(() => {
+    if (user && user.instagramUsername) {
+      handleFetchInstagramMedia();
+      fetchInstagramIntelligence();
+    } else {
+      setIgMedia(null);
+      setIntelligence(null);
+    }
+  }, [user?.instagramUsername, fetchInstagramIntelligence]);
+
 
   // Local Editing & Dirty States
   const [localPost, setLocalPost] = useState(null);
@@ -766,9 +1197,9 @@ export default function App(){
 
   const [savingCollab, setSavingCollab] = useState(false);
 
-  const showToast = (message, type = "success") => {
+  function showToast(message, type = "success") {
     setToast({ message, type });
-  };
+  }
 
   // Enforce credits check on frontend
   const useCredit = () => {
@@ -783,7 +1214,7 @@ export default function App(){
     return true;
   };
 
-  const setTab   = v => { setTabRaw(v);   save(STORAGE.tab,v); };
+  function setTab(v) { setTabRaw(v); save(STORAGE.tab, v); }
   const setTheme = v => { setThemeRaw(v); save(STORAGE.theme, v); };
 
   // Selection state — declared BEFORE effects that depend on them
@@ -907,7 +1338,6 @@ export default function App(){
   const [newShot,         setNewShot]          = useState({shot:"",loc:"",mood:"cinematic",light:"",angle:"",props:""});
 
   // Growth Journal State
-  const [selectedJournalId, setSelectedJournalId] = useState(null);
   const [newJournal, setNewJournal] = useState({ weekStart: todayStr, followers: "", posts: "", reach: "", saves: "", engagement: "", mood: "inspired", wins: "", lessons: "", reflection: "", notes: "" });
   const [addingJournal, setAddingJournal] = useState(false);
 
@@ -1991,7 +2421,9 @@ export default function App(){
     ["vault","b-roll vault"],
     ["journal","growth journal"],
     ["collabs","collabs CRM"],
-    ["trends","AI trend scout"]
+    ["trends","AI trend scout"],
+    ["instagram","instagram dashboard"],
+    ["settings","settings"]
   ];
 
   const formRates = calculateCollabRates(formDeliverables);
@@ -2028,7 +2460,7 @@ export default function App(){
                     </div>
                   </div>
 
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+                  <div className="form-grid-3" style={{marginBottom:10}}>
                     <div>
                       <span style={S.label}>contact person</span>
                       <input value={newCollab.contactName} style={S.input} onChange={e=>setNewCollab({...newCollab,contactName:e.target.value})} placeholder="Marcus..."/>
@@ -2043,7 +2475,7 @@ export default function App(){
                     </div>
                   </div>
 
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:10}}>
+                  <div className="form-grid-4" style={{marginBottom:10}}>
                     <div>
                       <span style={S.label}>proposed rate (₹)</span>
                       <input type="number" value={newCollab.quote} style={S.input} onChange={e=>setNewCollab({...newCollab,quote:e.target.value})} placeholder="400"/>
@@ -2328,7 +2760,7 @@ export default function App(){
                         <Tag label={c.status} color={c.status.startsWith("ghosted")?"#f0a090":c.status==="completed"?"#a8c8a0":"#c9b99a"}/>
                       </div>
 
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                      <div className="form-grid-4" style={{marginBottom:16}}>
                         <div style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
                           <span style={{fontSize:11,color:"var(--text-muted)"}}>proposed rate</span>
                           <div style={{fontSize:16,fontWeight:500,marginTop:2}}>₹{c.quote}</div>
@@ -2358,7 +2790,7 @@ export default function App(){
                             return (
                               <>
                                 {/* Quantity adjusters */}
-                                <div className="no-print" style={{marginBottom:16, paddingBottom:12, borderBottom:"1px solid var(--border-color)", display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10}}>
+                                <div className="no-print form-grid-4" style={{marginBottom:16, paddingBottom:12, borderBottom:"1px solid var(--border-color)", gap:10}}>
                                   <div style={{display:"flex", flexDirection:"column", alignItems:"center", background:"var(--bg-secondary)", border:"1px solid var(--border-color)", padding:6, borderRadius:10}}>
                                     <span style={{fontSize:10, color:"var(--text-muted)", textTransform:"lowercase", fontWeight:600}}>▶ Reels</span>
                                     <div style={{display:"flex", alignItems:"center", gap:8, marginTop:4}}>
@@ -2670,7 +3102,7 @@ export default function App(){
                           </div>
 
                           {/* Invoice Meta Grid */}
-                          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:25, fontSize:13}}>
+                          <div className="form-grid-2" style={{gap:20, marginBottom:25, fontSize:13}}>
                             <div>
                               <span style={{fontSize:10, textTransform:"uppercase", color:"var(--text-muted)", display:"block", marginBottom:4, fontWeight:600}}>Billed From</span>
                               <strong>Aesthetic Creator Studio</strong><br />
@@ -2686,7 +3118,7 @@ export default function App(){
                             </div>
                           </div>
 
-                          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:30, fontSize:12, background:"var(--bg-primary)", padding:12, borderRadius:10, border:"1px solid var(--border-color)"}}>
+                          <div className="form-grid-2" style={{gap:20, marginBottom:30, fontSize:12, background:"var(--bg-primary)", padding:12, borderRadius:10, border:"1px solid var(--border-color)"}}>
                             <div>
                               <strong>Date of Issue:</strong> {todayStr}
                             </div>
@@ -2787,7 +3219,7 @@ export default function App(){
               );
 
   return(
-    <div style={{background:"var(--bg-primary)",minHeight:"100vh",color:"var(--text-primary)",transition:"all 0.3s"}}>
+    <div className="main-app-content" style={{background:"var(--bg-primary)",minHeight:"100vh",color:"var(--text-primary)",transition:"all 0.3s"}}>
       <style>{`
         button:hover { opacity: 0.78; }
         select { appearance: none; -webkit-appearance: none; }
@@ -2803,7 +3235,7 @@ export default function App(){
 
       {/* HEADER */}
       <div style={{padding:"22px 28px 0",borderBottom:"1px solid var(--border-color)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+        <div className="header-row">
           <div>
             <h1 style={{fontSize:22,fontWeight:400,letterSpacing:-0.5,color:"var(--text-primary)",margin:0}}>second brain ✦</h1>
             <p style={{fontSize:12,color:"var(--text-secondary)",marginTop:3,fontStyle:"italic",margin:"3px 0 0"}}>for creators rebuilding in real time</p>
@@ -2858,9 +3290,9 @@ export default function App(){
         </div>
 
         {/* Tab Navigation */}
-        <div style={{display:"flex",gap:4,overflowX:"auto",scrollbarWidth:"none"}}>
+        <div className="tab-navigation-bar">
           {TABS.map(([id,label])=>(
-            <button key={id} onClick={()=>setTab(id)} style={{
+            <button key={id} data-test-id={`tab-${id}`} onClick={()=>setTab(id)} style={{
               padding:"10px 18px",fontSize:13,cursor:"pointer",border:"none",fontFamily:"inherit",
               borderBottom:tab===id?"2px solid var(--border-focus)":"2px solid transparent",
               background:"transparent",color:tab===id?"var(--text-primary)":"var(--text-muted)",
@@ -2871,10 +3303,91 @@ export default function App(){
       </div>
 
       <div style={{padding:"24px 28px"}}>
+        {user && !profileStatus.complete && skipWizard && (
+          <div data-test-id="creator-dna-banner" style={{
+            background: "rgba(201, 185, 154, 0.1)",
+            border: "1px solid var(--accent-color)",
+            borderRadius: 12,
+            padding: "12px 18px",
+            marginBottom: 20,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12
+          }}>
+            <span style={{ fontSize: 13, color: "var(--text-primary)" }}>
+              💡 <strong>Personalize your OS:</strong> Complete your Creator DNA profile to unlock personalized recommendations.
+            </span>
+            <button 
+              onClick={() => {
+                localStorage.removeItem("sb-skip-onboarding");
+                setSkipWizard(false);
+                setShowWizard(true);
+              }} 
+              style={{
+                background: "var(--accent-color)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 20,
+                padding: "6px 16px",
+                fontSize: 12,
+                cursor: "pointer",
+                fontWeight: 500,
+                minHeight: 32
+              }}
+            >
+              Complete Profile
+            </button>
+          </div>
+        )}
 
         {/* 1. CONTENT PLANNER */}
         {tab==="planner"&&(
           <div className="card-in">
+            {!user?.instagramUsername && (
+              <div style={{
+                background: "linear-gradient(135deg, rgba(131, 58, 180, 0.08) 0%, rgba(225, 48, 108, 0.08) 100%)",
+                border: "1px solid rgba(225, 48, 108, 0.25)",
+                borderRadius: "16px",
+                padding: "20px",
+                marginBottom: "24px",
+                display: "flex",
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "16px"
+              }} data-test-id="ig-dashboard-promo">
+                <div>
+                  <h3 style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-primary)", margin: "0 0 8px" }}>Connect Instagram to unlock:</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "13px", color: "var(--text-secondary)" }}>
+                    <div>✓ Creator Intelligence</div>
+                    <div>✓ Content Analysis</div>
+                    <div>✓ Hook Analysis</div>
+                    <div>✓ AI Content Ideas</div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleInstagramConnectClick}
+                  disabled={igLoading}
+                  style={{
+                    minHeight: "44px",
+                    padding: "0 24px",
+                    borderRadius: "22px",
+                    background: "linear-gradient(135deg, #C13584 0%, #E1306C 100%)",
+                    color: "#FFFFFF",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(225, 48, 108, 0.2)"
+                  }}
+                  data-test-id="ig-dashboard-connect-btn"
+                >
+                  {igLoading ? "Connecting..." : "Connect Instagram"}
+                </button>
+              </div>
+            )}
             <div style={{...S.row,justifyContent:"space-between",marginBottom:18}}>
               <div style={S.row}>
                 <NavBtn onClick={()=>navigateCal("prev")}>‹</NavBtn>
@@ -2914,7 +3427,7 @@ export default function App(){
 
         {/* 2. BRAIN DUMP */}
         {tab==="dump"&&(
-          <div className="card-in" style={{display:"grid",gridTemplateColumns:"220px 1fr",gap:20}}>
+          <div className="card-in pane-dump">
             <div>
               <span style={{...S.label,marginBottom:8}}>your dumps</span>
               {dumps.filter(d=>!d.archived).map(d=>(
@@ -3263,7 +3776,7 @@ export default function App(){
 
         {/* 3. SHOOT PLANNER */}
         {tab==="shoot"&&(
-          <div className="card-in" style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:20}}>
+          <div className="card-in pane-shoot">
             <div>
               <span style={S.label}>shoot status</span>
               <div style={{display:"flex",gap:4,marginBottom:14}}>
@@ -3486,7 +3999,7 @@ export default function App(){
 
         {/* 5. GROWTH JOURNAL */}
         {tab==="journal"&&(
-          <div className="card-in" style={{display:"grid",gridTemplateColumns:"260px 1fr",gap:20}}>
+          <div className="card-in pane-journal">
             {/* Sidebar list of weeks */}
             <div>
               <span style={S.label}>weekly entries</span>
@@ -3716,7 +4229,7 @@ export default function App(){
 
         {/* 6. COLLABS CRM */}
         {tab==="collabs"&&(
-          <div className="card-in" style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:20}}>
+          <div className="card-in pane-collabs">
             {/* Sidebar list of pipelines */}
             <div>
               <button onClick={discoverBrandsAI} disabled={discoveringBrands} style={{...S.btn("var(--accent-color)", true), width:"100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom:16}}>
@@ -3774,6 +4287,128 @@ export default function App(){
         {/* 7. AI TREND SCOUT */}
         {tab==="trends"&&(
           <div className="card-in">
+            {/* Instagram Multi-Tenant Connection Widget */}
+            <div style={{
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "16px",
+              padding: "20px",
+              marginBottom: "24px"
+            }} className="card-in">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: "12px", marginBottom: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "20px" }}>📸</span>
+                  <h3 style={{ fontSize: "15px", fontWeight: 600, margin: 0 }}>Instagram Creator Sync</h3>
+                </div>
+                {user?.instagramUsername ? (
+                  <span style={{ fontSize: "11px", background: "#e2f8f0", color: "#107c41", padding: "4px 8px", borderRadius: "12px", fontWeight: 600 }}>
+                    Connected
+                  </span>
+                ) : (
+                  <span style={{ fontSize: "11px", background: "var(--border-color)", color: "var(--text-muted)", padding: "4px 8px", borderRadius: "12px", fontWeight: 500 }}>
+                    Disconnected
+                  </span>
+                )}
+              </div>
+
+              {igError && (
+                <div style={{ background: "#fdf2f2", color: "#e02424", padding: "10px 14px", borderRadius: "8px", fontSize: "12px", marginBottom: "14px", border: "1px solid #fbd5d5" }}>
+                  {igError}
+                </div>
+              )}
+
+              {!user?.instagramUsername ? (
+                <div>
+                  <p style={{ fontSize: "13px", color: "var(--text-secondary)", margin: "0 0 14px 0", lineHeight: 1.5 }}>
+                    Link your Instagram creator account to import live profile data, track real-time analytics, and display recent media directly inside the operating system.
+                  </p>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <input
+                      type="password"
+                      value={igAccessToken}
+                      onChange={(e) => setIgAccessToken(e.target.value)}
+                      style={{ ...S.input, flex: 1, padding: "10px 14px" }}
+                      placeholder="Paste your Meta User Access Token (EAAN...) here"
+                    />
+                    <button
+                      onClick={handleConnectInstagram}
+                      disabled={igLoading || !igAccessToken.trim()}
+                      style={{ ...S.btn("var(--accent-color)", true), padding: "10px 20px" }}
+                    >
+                      {igLoading ? "Connecting..." : "Link Channel"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                    <div>
+                      <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-primary)" }}>
+                        @{user.instagramUsername}
+                      </div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                        Linked on {user.instagramConnectedAt ? new Date(user.instagramConnectedAt).toLocaleDateString() : "recent"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        onClick={handleFetchInstagramMedia}
+                        disabled={igLoading}
+                        style={{ ...S.btn("var(--border-focus)", false), fontSize: "12px", padding: "6px 14px", background: "none", border: "1px solid var(--border-color)", cursor: "pointer", color: "var(--text-primary)" }}
+                      >
+                        {igLoading ? "Refreshing..." : "🔄 Refresh Media"}
+                      </button>
+                      <button
+                        onClick={handleInstagramDisconnectClick}
+                        disabled={igLoading}
+                        style={{ ...S.btn("#e02424", false), fontSize: "12px", padding: "6px 14px", background: "none", border: "1px solid #fbd5d5", cursor: "pointer", color: "#e02424" }}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Render Recent Instagram Media Grid */}
+                  {igMedia && igMedia.length > 0 && (
+                    <div style={{ marginTop: "20px", borderTop: "1px solid var(--border-color)", paddingTop: "16px" }}>
+                      <h4 style={{ fontSize: "13px", fontWeight: 600, marginBottom: "12px", color: "var(--text-primary)" }}>Recent Instagram Posts</h4>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" }}>
+                        {igMedia.map((item) => (
+                          <a
+                            key={item.id}
+                            href={item.permalink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ textDecoration: "none", color: "inherit" }}
+                          >
+                            <div style={{ border: "1px solid var(--border-color)", borderRadius: "12px", overflow: "hidden", background: "var(--bg-primary)" }} className="card-in">
+                              <div style={{ height: "120px", overflow: "hidden", position: "relative" }}>
+                                {item.media_type === "VIDEO" ? (
+                                  <div style={{ width: "100%", height: "100%", background: "#1a1a1a", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "20px" }}>
+                                    📹
+                                  </div>
+                                ) : (
+                                  <img src={item.media_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                )}
+                              </div>
+                              <div style={{ padding: "8px 12px" }}>
+                                <p style={{ fontSize: "11px", color: "var(--text-secondary)", margin: "0 0 6px 0", height: "30px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {item.caption || "No caption"}
+                                </p>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-muted)", borderTop: "1px solid var(--border-color)", paddingTop: "6px" }}>
+                                  <span>❤️ {item.like_count || 0}</span>
+                                  <span>💬 {item.comments_count || 0}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             {/* Top selection bar */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
               <div style={S.row}>
@@ -3873,7 +4508,7 @@ export default function App(){
               </div>
             </div>
 
-            <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:20}}>
+            <div className="pane-trends">
               {/* Trends List Column */}
               <div>
                 <span style={S.label}>AI Virality Reports for: {NICHES.find(x=>x.id===activeNiche)?.label}</span>
@@ -3966,6 +4601,647 @@ export default function App(){
             </div>
           </div>
         )}
+
+        {tab==="instagram"&&(
+          <div className="card-in">
+            {!user?.instagramUsername ? (
+              <div style={{
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border-color)",
+                borderRadius: "16px",
+                padding: "24px",
+                maxWidth: "600px",
+                margin: "40px auto",
+                textAlign: "center"
+              }} className="card-in">
+                <div style={{fontSize: "36px", marginBottom: "12px"}}>📸</div>
+                <h3 style={{fontSize: "18px", fontWeight: 600, marginBottom: "8px"}}>Connect your Instagram Channel</h3>
+                <p style={{fontSize: "13px", color: "var(--text-secondary)", marginBottom: "20px", lineHeight: 1.5}}>
+                  Link your Instagram creator account to unlock the Rule-Based Analytics Engine, Hook Database audits, and AI-driven content generation strategy.
+                </p>
+                <div style={{display: "flex", flexDirection: "column", gap: "12px", alignItems: "stretch"}}>
+                  <input
+                    type="password"
+                    value={igAccessToken}
+                    onChange={(e) => setIgAccessToken(e.target.value)}
+                    style={{...S.input, padding: "12px 14px", textAlign: "center"}}
+                    placeholder="Paste your Meta User Access Token (EAAN...) here"
+                  />
+                  <button
+                    onClick={handleConnectInstagram}
+                    disabled={igLoading || !igAccessToken.trim()}
+                    style={{...S.btn("var(--accent-color)", false), minHeight: "44px", width: "100%", fontWeight: 600}}
+                  >
+                    {igLoading ? "Connecting Channel..." : "Link Instagram Account"}
+                  </button>
+                  {igError && (
+                    <p style={{color: "#e02424", fontSize: "12px", marginTop: "4px"}}>{igError}</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div>
+                {/* Header overview row */}
+                <div style={{
+                  display: "flex", 
+                  justifyContent: "space-between", 
+                  alignItems: "center", 
+                  background: "var(--bg-secondary)", 
+                  borderRadius: 16, 
+                  border: "1px solid var(--border-color)", 
+                  padding: "16px 20px", 
+                  marginBottom: 20,
+                  flexWrap: "wrap",
+                  gap: 12
+                }}>
+                  <div>
+                    <h3 style={{fontSize: 16, fontWeight: 600, margin: 0}}>📸 @{user.instagramUsername} Creator Dashboard</h3>
+                    <p style={{fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0"}}>Linked on {user.instagramConnectedAt ? new Date(user.instagramConnectedAt).toLocaleDateString() : "recent"}</p>
+                  </div>
+                  <div style={{display: "flex", gap: 8}}>
+                    <button 
+                      onClick={handleSyncInstagram} 
+                      disabled={syncingState || intelLoading} 
+                      style={S.btn("var(--accent-color)", false)}
+                    >
+                      {syncingState ? "Syncing..." : "⚡ Sync & Analyze"}
+                    </button>
+                    <button 
+                      onClick={handleInstagramDisconnectClick} 
+                      disabled={igLoading} 
+                      style={{...S.btn("#e02424", false), background: "none", border: "1px solid #fbd5d5", color: "#e02424"}}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+
+                {intelLoading || syncingState ? (
+                  <div style={{textAlign: "center", padding: "80px 20px", color: "var(--text-secondary)"}}>
+                    <div style={{fontSize: 32, marginBottom: 12, animation: "bounce-cinematic 2s infinite ease-in-out"}}>✨</div>
+                    <h4 style={{fontWeight: 500}}>Compiling Creator Analytics...</h4>
+                    <p style={{fontSize: 12, color: "var(--text-muted)", marginTop: 4}}>Fetching recent media, building hook database, and running AI recommendations engine.</p>
+                  </div>
+                ) : !intelligence ? (
+                  <div style={{textAlign: "center", padding: "60px 20px", background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border-color)"}}>
+                    <div style={{fontSize: 32, marginBottom: 12, opacity: 0.4}}>📊</div>
+                    <h3 style={{fontWeight: 500, fontSize: 16}}>No snapshot cache compiled yet</h3>
+                    <p style={{fontSize: 13, color: "var(--text-secondary)", margin: "6px auto 16px", maxWidth: 360}}>Run your initial channel synchronization to parse content cadence, pillars, and opportunities.</p>
+                    <button onClick={handleSyncInstagram} style={S.btn("var(--accent-color)")}>⚡ Sync Instagram Channel</button>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Primary double-pane dashboard metrics */}
+                    <div className="pane-trends" style={{marginBottom: 20}}>
+                      
+                      {/* Left: Overall Health & Opportunities */}
+                      <div>
+                        {/* Health Score Card */}
+                        <div style={{...S.card, padding: 20}}>
+                          <span style={S.label}>Creator Health Index</span>
+                          <div style={{display: "flex", alignItems: "center", gap: 20, margin: "14px 0"}}>
+                            <div style={{
+                              width: 74, 
+                              height: 74, 
+                              borderRadius: "50%", 
+                              border: "4px solid var(--accent-light)", 
+                              borderTopColor: "var(--accent-color)", 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "center",
+                              fontSize: 22,
+                              fontWeight: 600,
+                              color: "var(--text-primary)"
+                            }}>
+                              {intelligence.creatorHealthScore || 0}
+                            </div>
+                            <div>
+                              <h4 style={{fontSize: 14, fontWeight: 600, color: "var(--text-primary)"}}>Stable Growth Index</h4>
+                              <p style={{fontSize: 11, color: "var(--text-secondary)", marginTop: 2}}>Based on calculated posting gaps, format variety, and hook engagement stability.</p>
+                            </div>
+                          </div>
+                          <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, borderTop: "1px solid var(--border-color)", paddingTop: 12, fontSize: 12}}>
+                            <div>
+                              <span style={{color: "var(--text-muted)", display: "block"}}>Consistency</span>
+                              <strong>{intelligence.consistencyScore || 0} / 100</strong>
+                            </div>
+                            <div>
+                              <span style={{color: "var(--text-muted)", display: "block"}}>Format Mix</span>
+                              <strong>Reels {intelligence.contentDistribution?.reelsPercentage || 0}%</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Opportunity Engine Warnings */}
+                        <div style={{...S.card, padding: 20}}>
+                          <span style={S.label}>Opportunity Engine Findings</span>
+                          <div style={{display: "flex", flexDirection: "column", gap: 10, marginTop: 12}}>
+                            {intelligence.opportunities && intelligence.opportunities.map((opp, idx) => (
+                              <div key={idx} style={{
+                                background: "var(--bg-primary)", 
+                                border: "1px solid var(--border-color)", 
+                                borderLeft: "3.5px solid var(--border-focus)", 
+                                padding: "10px 12px", 
+                                borderRadius: 8, 
+                                fontSize: 12,
+                                display: "flex",
+                                gap: 8
+                              }}>
+                                <span>⚠️</span>
+                                <span style={{color: "var(--text-secondary)", lineHeight: 1.4}}>{opp}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Visual Content Pillars */}
+                        <div style={{...S.card, padding: 20}}>
+                          <span style={S.label}>Deterministic Content Pillars (Captions Audit)</span>
+                          <div style={{marginTop: 14}}>
+                            {Object.entries(intelligence.contentPillars || {}).map(([pillar, pct]) => {
+                              const colors = { productivity: "var(--accent-color)", business: "#a0b8c8", lifestyle: "#d4c5e2", personal: "#a8c8a0" };
+                              const col = colors[pillar] || "var(--text-muted)";
+                              return (
+                                <div key={pillar} style={{marginBottom: 10}}>
+                                  <div style={{display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4, textTransform: "capitalize"}}>
+                                    <span>{pillar}</span>
+                                    <strong>{pct}%</strong>
+                                  </div>
+                                  <div style={{height: 6, background: "var(--bg-primary)", borderRadius: 3}}>
+                                    <div style={{height: "100%", width: `${pct}%`, background: col, borderRadius: 3}}></div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Cadence, Hooks & Strategy */}
+                      <div>
+                        {/* Cadence Stats */}
+                        <div style={{...S.card, padding: 20}}>
+                          <span style={S.label}>Posting Cadence & Velocity</span>
+                          <div style={{display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 12, textAlign: "center"}}>
+                            <div style={{background: "var(--bg-primary)", padding: 10, borderRadius: 10, border: "1px solid var(--border-color)"}}>
+                              <span style={{fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase"}}>posts / week</span>
+                              <div style={{fontSize: 16, fontWeight: 600, marginTop: 4, color: "var(--text-primary)"}}>{intelligence.postingCadence?.postsPerWeek || 0}</div>
+                            </div>
+                            <div style={{background: "var(--bg-primary)", padding: 10, borderRadius: 10, border: "1px solid var(--border-color)"}}>
+                              <span style={{fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase"}}>posts / month</span>
+                              <div style={{fontSize: 16, fontWeight: 600, marginTop: 4, color: "var(--text-primary)"}}>{intelligence.postingCadence?.postsPerMonth || 0}</div>
+                            </div>
+                            <div style={{background: "var(--bg-primary)", padding: 10, borderRadius: 10, border: "1px solid var(--border-color)"}}>
+                              <span style={{fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase"}}>avg gap (days)</span>
+                              <div style={{fontSize: 16, fontWeight: 600, marginTop: 4, color: "var(--text-primary)"}}>{intelligence.postingCadence?.averageGapBetweenPosts || 0}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Hook Analysis Database */}
+                        <div style={{...S.card, padding: 20}}>
+                          <span style={S.label}>Hook Intelligence Database</span>
+                          <div style={{marginTop: 12}}>
+                            <h5 style={{fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", marginBottom: 6}}>📈 Top Performing Hooks</h5>
+                            {intelligence.hookAnalysis?.strongestHooks?.map((h, i) => (
+                              <div key={i} style={{fontSize: 12, background: "rgba(168, 200, 160, 0.1)", border: "1px solid rgba(168, 200, 160, 0.3)", borderRadius: 8, padding: "6px 10px", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center"}}>
+                                <span style={{fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8}}>"{h.hook}"</span>
+                                <span style={{fontSize: 10, fontWeight: 600, color: "var(--text-secondary)"}}>❤️ {h.engagement}</span>
+                              </div>
+                            ))}
+                            <h5 style={{fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", marginTop: 14, marginBottom: 6}}>📉 Lowest Performing Hooks</h5>
+                            {intelligence.hookAnalysis?.weakestHooks?.map((h, i) => (
+                              <div key={i} style={{fontSize: 12, background: "rgba(240, 160, 144, 0.1)", border: "1px solid rgba(240, 160, 144, 0.2)", borderRadius: 8, padding: "6px 10px", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center"}}>
+                                <span style={{fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8}}>"{h.hook}"</span>
+                                <span style={{fontSize: 10, fontWeight: 600, color: "var(--text-secondary)"}}>❤️ {h.engagement}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* AI Suggested Hook Improvements */}
+                        <div style={{...S.card, padding: 20}}>
+                          <span style={S.label}>AI Hook Optimization Proposals</span>
+                          <div style={{display: "flex", flexDirection: "column", gap: 10, marginTop: 12}}>
+                            {intelligence.hookAnalysis?.suggestedHooks?.slice(0, 2).map((hookOpt, idx) => (
+                              <div key={idx} style={{background: "var(--bg-primary)", border: "1px solid var(--border-color)", padding: 10, borderRadius: 10, fontSize: 12}}>
+                                <div style={{color: "var(--text-muted)", textDecoration: "line-through", fontSize: 11}}>"{hookOpt.original}"</div>
+                                <div style={{color: "var(--accent-color)", fontWeight: 500, margin: "2px 0 4px 0"}}>🎯 "{hookOpt.improved}"</div>
+                                <div style={{fontSize: 10, color: "var(--text-secondary)", fontStyle: "italic"}}>{hookOpt.rationale}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* AI Content Ideas & Drafting Panel */}
+                    <div style={{...S.card, padding: 20}}>
+                      <span style={S.label}>AI Creator Strategy Panel</span>
+                      
+                      <div style={{display: "flex", gap: 6, marginBottom: 14, marginTop: 10, borderBottom: "1px solid var(--border-color)", paddingBottom: 10}}>
+                        {["reels", "carousels", "stories"].map((t) => (
+                          <button key={t} onClick={() => setIdeaTab(t)} style={{
+                            padding: "6px 14px",
+                            fontSize: 12,
+                            borderRadius: 12,
+                            border: "none",
+                            background: ideaTab === t ? "var(--accent-light)" : "transparent",
+                            color: ideaTab === t ? "var(--accent-color)" : "var(--text-muted)",
+                            fontWeight: ideaTab === t ? 600 : 400,
+                            cursor: "pointer"
+                          }}>
+                            {t.toUpperCase()} IDEAS
+                          </button>
+                        ))}
+                      </div>
+
+                      <div>
+                        {intelligence.contentIdeas?.[ideaTab]?.map((idea, idx) => (
+                          <div key={idx} style={{
+                            background: "var(--bg-primary)", 
+                            borderRadius: 12, 
+                            border: "1px solid var(--border-color)", 
+                            padding: 14, 
+                            marginBottom: 12,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            gap: 16
+                          }} className="card-in">
+                            <div style={{flex: 1, minWidth: 0}}>
+                              <h4 style={{fontSize: 13, fontWeight: 600, color: "var(--text-primary)"}}>{idea.title}</h4>
+                              <p style={{fontSize: 12, color: "var(--text-secondary)", marginTop: 4, lineHeight: 1.5}}>{idea.concept}</p>
+                              {idea.suggestedHook && (
+                                <div style={{marginTop: 6, fontSize: 11, fontStyle: "italic", color: "var(--accent-color)"}}>
+                                  <strong>Visual Hook:</strong> "{idea.suggestedHook}"
+                                </div>
+                              )}
+                            </div>
+                            <button 
+                              onClick={() => handleAddIdeaToPlanner(idea, ideaTab)} 
+                              style={S.btn("var(--accent-color)", true)}
+                            >
+                              ⚡ Add To Planner
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab==="settings"&&(
+          <div className="card-in">
+            <h2 style={{margin:"0 0 20px",fontSize:18,fontWeight:400,color:"var(--text-primary)"}}>Settings & Creator DNA</h2>
+            
+            <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:24,alignItems:"start"}} className="responsive-settings-grid">
+              
+              {/* Scorecard Column */}
+              <div style={{
+                background:"var(--bg-secondary)",border:"1px solid var(--border-color)",borderRadius:16,padding:20
+              }}>
+                <h3 style={{fontSize:14,fontWeight:500,margin:"0 0 16px"}}>Completion Scorecard</h3>
+                
+                {/* Visual percentage score */}
+                <div style={{
+                  display:"flex",alignItems:"center",gap:16,marginBottom:20,
+                  padding:14,borderRadius:12,background:"rgba(201, 185, 154, 0.1)",border:"1px solid var(--border-color)"
+                }}>
+                  <div style={{
+                    fontSize:24,fontWeight:700,color:"var(--accent-color)"
+                  }}>{profileStatus.score}%</div>
+                  <div style={{fontSize:12,color:"var(--text-secondary)",lineHeight:1.4}}>
+                    Creator DNA Completed. Fully fill your profile to unlock custom AI features.
+                  </div>
+                </div>
+
+                {/* Scorecard Checklist */}
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {[
+                    { key: "niche", label: "Niche" },
+                    { key: "goals", label: "Goals" },
+                    { key: "audience", label: "Audience" },
+                    { key: "formats", label: "Preferred Formats" },
+                    { key: "pillars", label: "Content Pillars" },
+                    { key: "tone", label: "Tone of Voice" },
+                    { key: "challenge", label: "Biggest Challenge" }
+                  ].map(item => (
+                    <div key={item.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
+                      <span style={{
+                        color: profileStatus.checklist?.[item.key] ? "var(--accent-color)" : "var(--text-muted)",
+                        fontWeight: 600
+                      }}>
+                        {profileStatus.checklist?.[item.key] ? "✓" : "○"}
+                      </span>
+                      <span style={{
+                        color: profileStatus.checklist?.[item.key] ? "var(--text-primary)" : "var(--text-muted)"
+                      }}>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Form Column */}
+              <div style={{
+                background:"var(--bg-secondary)",border:"1px solid var(--border-color)",borderRadius:16,padding:20
+              }}>
+                <h3 style={{fontSize:14,fontWeight:500,margin:"0 0 16px"}}>Creator DNA Parameters</h3>
+                
+                <div style={{display:"flex",flexDirection:"column",gap:18}}>
+                  {/* Step 1: Primary Niche */}
+                  <div>
+                    <span style={S.label}>Primary Niche</span>
+                    <select value={wizardForm.primaryNiche} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, primaryNiche: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 2: Secondary Niches */}
+                  <div>
+                    <span style={S.label}>Secondary Niches (Multi-select)</span>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n => {
+                        const active = wizardForm.secondaryNiches.includes(n);
+                        return (
+                          <button key={n} onClick={() => toggleSecondaryNiche(n)} style={{
+                            ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
+                            background: active ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                            minHeight: 44,
+                            padding: "8px 16px"
+                          }}>{n}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Step 3: Goal */}
+                  <div>
+                    <span style={S.label}>Primary Goal</span>
+                    <select value={wizardForm.primaryGoal} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, primaryGoal: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["Grow Followers", "Build Personal Brand", "Generate Leads", "Get Brand Deals", "Sell Products", "Sell Services", "Become Full-Time Creator", "Build Community"].map(g=>(
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 4: Audience Size */}
+                  <div>
+                    <span style={S.label}>Audience Size</span>
+                    <select value={wizardForm.audienceSize} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, audienceSize: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["0–1k", "1k–10k", "10k–50k", "50k–100k", "100k+"].map(a=>(
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 5: Creator Stage */}
+                  <div>
+                    <span style={S.label}>Creator Stage</span>
+                    <select value={wizardForm.creatorStage} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, creatorStage: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["Just Starting", "Growing Creator", "Established Creator", "Full-Time Creator", "Agency / Team"].map(s=>(
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 6: Posting Frequency */}
+                  <div>
+                    <span style={S.label}>Posting Frequency</span>
+                    <select value={wizardForm.postingFrequency} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, postingFrequency: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["Daily", "5x Weekly", "3x Weekly", "Weekly", "Custom"].map(f=>(
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 7: Preferred Formats */}
+                  <div>
+                    <span style={S.label}>Preferred Formats (Multi-select)</span>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Reels", "Carousels", "Stories", "Long-form Videos", "Mixed"].map(f => {
+                        const active = wizardForm.preferredFormats.includes(f);
+                        return (
+                          <button key={f} onClick={() => togglePreferredFormat(f)} style={{
+                            ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
+                            background: active ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                            minHeight: 44,
+                            padding: "8px 16px"
+                          }}>{f}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Step 8: Content Pillars */}
+                  <div>
+                    <span style={S.label}>Content Pillars (Multi-select, max 5)</span>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Education", "Tutorials", "Behind The Scenes", "Personal Stories", "Case Studies", "Industry News", "Motivation", "Product Reviews", "Opinions", "Lifestyle"].map(p => {
+                        const active = wizardForm.contentPillars.includes(p);
+                        return (
+                          <button key={p} onClick={() => toggleContentPillar(p)} style={{
+                            ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
+                            background: active ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                            minHeight: 44,
+                            padding: "8px 16px"
+                          }}>{p}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Step 9: Tone of Voice */}
+                  <div>
+                    <span style={S.label}>Tone of Voice</span>
+                    <select value={wizardForm.toneOfVoice} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, toneOfVoice: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["Professional", "Educational", "Friendly", "Humorous", "Bold", "Luxury", "Minimalist", "Inspirational"].map(t=>(
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 10: Biggest Challenge */}
+                  <div>
+                    <span style={S.label}>Biggest Challenge</span>
+                    <select value={wizardForm.biggestChallenge} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, biggestChallenge: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["Running Out Of Ideas", "Consistency", "Hooks", "Editing", "Planning", "Growth", "Brand Deals", "Monetization"].map(c=>(
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 11: AI Assistance Level */}
+                  <div>
+                    <span style={S.label}>AI Assistance Level</span>
+                    <select value={wizardForm.aiAssistanceLevel} style={{...S.input, minHeight: 44}} onChange={e=>{
+                      const updated = { ...wizardForm, aiAssistanceLevel: e.target.value };
+                      setWizardForm(updated);
+                      handleSaveWizardProgress(updated);
+                    }}>
+                      {["Minimal", "Balanced", "Aggressive"].map(l=>(
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const saved = await apiSaveProfile(wizardForm);
+                        setProfile(saved);
+                        const status = await apiGetProfileCompletionStatus();
+                        setProfileStatus(status);
+                        showToast("Creator DNA Profile updated successfully!");
+                      } catch (e) {
+                        showToast("Failed to save Creator DNA.", "error");
+                      }
+                    }} 
+                    style={{
+                      ...S.btn("var(--accent-color)"),
+                      fontWeight: 600,
+                      alignSelf: "flex-start",
+                      marginTop: 10,
+                      minHeight: 44,
+                      padding: "10px 24px"
+                    }}
+                  >
+                    Save Creator DNA Settings
+                  </button>
+
+                </div>
+              </div>
+
+            </div>
+
+            {/* Connected Accounts Section */}
+            <div style={{ marginTop: 32, borderTop: "1px solid var(--border-color)", paddingTop: 32 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 500, color: "var(--text-primary)", marginBottom: 16 }}>Connected Accounts</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                {/* Instagram Connection Card */}
+                <InstagramConnectionCard
+                  connected={!!user?.instagramUsername}
+                  profile={user?.instagramUsername ? {
+                    username: user.instagramUsername,
+                    mediaCount: igMedia ? igMedia.length : 0,
+                    avatarUrl: null
+                  } : null}
+                  lastSync={getFriendlyLastSync()}
+                  loading={igLoading}
+                  error={igError}
+                  syncing={syncingState}
+                  syncStep={syncStep}
+                  onConnect={handleInstagramConnectClick}
+                  onSync={handleSyncInstagram}
+                  onDisconnect={handleInstagramDisconnectClick}
+                  onViewIntelligence={() => setTab("instagram")}
+                />
+                
+                {/* Future Connected Accounts Placeholders */}
+                <div style={{
+                  background: "var(--bg-secondary)",
+                  borderRadius: "16px",
+                  border: "1px dashed var(--border-color)",
+                  padding: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  opacity: 0.5
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{
+                      width: "48px",
+                      height: "48px",
+                      borderRadius: "12px",
+                      background: "var(--border-color)",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px"
+                    }}>🎥</div>
+                    <div>
+                      <h4 style={{ fontSize: "14px", fontWeight: "600", margin: 0 }}>YouTube Channel</h4>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Coming Soon</span>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+                    Connect your YouTube channel to analyze shorts cadence, video hooks, and optimize video pacing.
+                  </p>
+                </div>
+
+                <div style={{
+                  background: "var(--bg-secondary)",
+                  borderRadius: "16px",
+                  border: "1px dashed var(--border-color)",
+                  padding: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  opacity: 0.5
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{
+                      width: "48px",
+                      height: "48px",
+                      borderRadius: "12px",
+                      background: "var(--border-color)",
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px"
+                    }}>🎵</div>
+                    <div>
+                      <h4 style={{ fontSize: "14px", fontWeight: "600", margin: 0 }}>TikTok Account</h4>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Coming Soon</span>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+                    Connect your TikTok profile to track trend velocity, video templates, and sound popularity.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
 
       </div>
 
@@ -4352,6 +5628,495 @@ export default function App(){
               <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(localPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
               <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(localPost.id)}>delete forever</button>
               <button style={S.btn("var(--text-muted)",true)} onClick={handleCancelPost}>cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWizard && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(18, 17, 16, 0.6)",
+          backdropFilter: "blur(6px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1100,
+          padding: "20px"
+        }}>
+          <div className="card-in" style={{
+            ...S.card,
+            width: "100%",
+            maxWidth: "600px",
+            maxHeight: "90vh",
+            overflowY: "auto",
+            border: "1px solid var(--border-focus)",
+            boxShadow: "var(--shadow-lg)",
+            margin: 0,
+            padding: "24px"
+          }}>
+            {/* Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div>
+                <h3 style={{fontSize:16,fontWeight:600,margin:0,color:"var(--text-primary)"}}>Creator DNA Onboarding</h3>
+                <span style={{fontSize:11,color:"var(--text-muted)"}}>Step {wizardStep} of 11</span>
+              </div>
+              <button 
+                onClick={handleSkipWizard} 
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  fontWeight: 500,
+                  textDecoration: "underline",
+                  padding: "4px 8px"
+                }}
+              >
+                Skip For Now
+              </button>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{
+              width: "100%",
+              height: 4,
+              background: "var(--border-color)",
+              borderRadius: 2,
+              marginBottom: 24,
+              overflow: "hidden"
+            }}>
+              <div style={{
+                width: `${(wizardStep / 11) * 100}%`,
+                height: "100%",
+                background: "var(--accent-color)",
+                transition: "width 0.3s ease"
+              }}/>
+            </div>
+
+            {/* Steps questions content */}
+            <div style={{minHeight: 180, marginBottom: 24}}>
+              {wizardStep === 1 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What type of creator are you? (Primary Niche)</h4>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
+                    {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
+                      <button 
+                        key={n} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, primaryNiche: n };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          setWizardStep(2);
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.primaryNiche === n ? "var(--accent-color)" : "var(--border-color)", true),
+                          background: wizardForm.primaryNiche === n ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          padding: "10px 14px",
+                          fontWeight: wizardForm.primaryNiche === n ? 600 : 400
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 2 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>Select any secondary niches that apply:</h4>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
+                    {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
+                      <button 
+                        key={n} 
+                        onClick={() => toggleSecondaryNiche(n)} 
+                        style={{
+                          ...S.btn(wizardForm.secondaryNiches.includes(n) ? "var(--accent-color)" : "var(--border-color)", true),
+                          background: wizardForm.secondaryNiches.includes(n) ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          padding: "10px 14px",
+                          fontWeight: wizardForm.secondaryNiches.includes(n) ? 600 : 400
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 3 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What are you trying to achieve? (Primary Goal)</h4>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {["Grow Followers", "Build Personal Brand", "Generate Leads", "Get Brand Deals", "Sell Products", "Sell Services", "Become Full-Time Creator", "Build Community"].map(g=>(
+                      <button 
+                        key={g} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, primaryGoal: g };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          setWizardStep(4);
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.primaryGoal === g ? "var(--accent-color)" : "var(--border-color)", false),
+                          background: wizardForm.primaryGoal === g ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          textAlign: "left",
+                          padding: "12px 18px",
+                          fontWeight: wizardForm.primaryGoal === g ? 600 : 400
+                        }}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 4 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How large is your audience today?</h4>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {["0–1k", "1k–10k", "10k–50k", "50k–100k", "100k+"].map(a=>(
+                      <button 
+                        key={a} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, audienceSize: a };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          setWizardStep(5);
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.audienceSize === a ? "var(--accent-color)" : "var(--border-color)", false),
+                          background: wizardForm.audienceSize === a ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          textAlign: "left",
+                          padding: "12px 18px",
+                          fontWeight: wizardForm.audienceSize === a ? 600 : 400
+                        }}
+                      >
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 5 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What stage are you currently in?</h4>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {["Just Starting", "Growing Creator", "Established Creator", "Full-Time Creator", "Agency / Team"].map(s=>(
+                      <button 
+                        key={s} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, creatorStage: s };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          setWizardStep(6);
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.creatorStage === s ? "var(--accent-color)" : "var(--border-color)", false),
+                          background: wizardForm.creatorStage === s ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          textAlign: "left",
+                          padding: "12px 18px",
+                          fontWeight: wizardForm.creatorStage === s ? 600 : 400
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 6 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How often would you like to post?</h4>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {["Daily", "5x Weekly", "3x Weekly", "Weekly", "Custom"].map(f=>(
+                      <button 
+                        key={f} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, postingFrequency: f };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          setWizardStep(7);
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.postingFrequency === f ? "var(--accent-color)" : "var(--border-color)", false),
+                          background: wizardForm.postingFrequency === f ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          textAlign: "left",
+                          padding: "12px 18px",
+                          fontWeight: wizardForm.postingFrequency === f ? 600 : 400
+                        }}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 7 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>Which content formats do you want to focus on? (Preferred Formats)</h4>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {["Reels", "Carousels", "Stories", "Long-form Videos", "Mixed"].map(f=>(
+                      <button 
+                        key={f} 
+                        onClick={() => togglePreferredFormat(f)} 
+                        style={{
+                          ...S.btn(wizardForm.preferredFormats.includes(f) ? "var(--accent-color)" : "var(--border-color)", false),
+                          background: wizardForm.preferredFormats.includes(f) ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          textAlign: "left",
+                          padding: "12px 18px",
+                          fontWeight: wizardForm.preferredFormats.includes(f) ? 600 : 400
+                        }}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 8 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What topics do you create content about? (Content Pillars, max 5)</h4>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
+                    {["Education", "Tutorials", "Behind The Scenes", "Personal Stories", "Case Studies", "Industry News", "Motivation", "Product Reviews", "Opinions", "Lifestyle"].map(p=>(
+                      <button 
+                        key={p} 
+                        onClick={() => toggleContentPillar(p)} 
+                        style={{
+                          ...S.btn(wizardForm.contentPillars.includes(p) ? "var(--accent-color)" : "var(--border-color)", true),
+                          background: wizardForm.contentPillars.includes(p) ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          padding: "10px 14px",
+                          fontWeight: wizardForm.contentPillars.includes(p) ? 600 : 400
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 9 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How do you want your content to sound? (Tone of Voice)</h4>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
+                    {["Professional", "Educational", "Friendly", "Humorous", "Bold", "Luxury", "Minimalist", "Inspirational"].map(t=>(
+                      <button 
+                        key={t} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, toneOfVoice: t };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          setWizardStep(10);
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.toneOfVoice === t ? "var(--accent-color)" : "var(--border-color)", true),
+                          background: wizardForm.toneOfVoice === t ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          padding: "10px 14px",
+                          fontWeight: wizardForm.toneOfVoice === t ? 600 : 400
+                        }}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 10 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What is your biggest struggle right now?</h4>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
+                    {["Running Out Of Ideas", "Consistency", "Hooks", "Editing", "Planning", "Growth", "Brand Deals", "Monetization"].map(c=>(
+                      <button 
+                        key={c} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, biggestChallenge: c };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          setWizardStep(11);
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.biggestChallenge === c ? "var(--accent-color)" : "var(--border-color)", true),
+                          background: wizardForm.biggestChallenge === c ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 44,
+                          padding: "10px 14px",
+                          fontWeight: wizardForm.biggestChallenge === c ? 600 : 400
+                        }}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 11 && (
+                <div>
+                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How much AI assistance would you like?</h4>
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    {[
+                      { key: "Minimal", desc: "Suggestions only — simple hints and ideas." },
+                      { key: "Balanced", desc: "Suggestions + drafts — helper copy and complete draft captions." },
+                      { key: "Aggressive", desc: "Full automation — complete content plans, full drafts, and advanced hooks." }
+                    ].map(l => (
+                      <button 
+                        key={l.key} 
+                        onClick={async () => {
+                          const updated = { ...wizardForm, aiAssistanceLevel: l.key };
+                          setWizardForm(updated);
+                          await handleSaveWizardProgress(updated);
+                          
+                          // Complete Onboarding!
+                          setShowWizard(false);
+                          showToast("🎉 Creator DNA onboarding completed!");
+                        }} 
+                        style={{
+                          ...S.btn(wizardForm.aiAssistanceLevel === l.key ? "var(--accent-color)" : "var(--border-color)", false),
+                          background: wizardForm.aiAssistanceLevel === l.key ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          minHeight: 54,
+                          textAlign: "left",
+                          padding: "12px 18px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4
+                        }}
+                      >
+                        <strong style={{fontSize: 13, color: "var(--text-primary)"}}>{l.key} Assistance</strong>
+                        <span style={{fontSize: 11, color: "var(--text-muted)"}}>{l.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Navigation footer */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid var(--border-color)",paddingTop:16}}>
+              <button 
+                disabled={wizardStep === 1}
+                onClick={() => setWizardStep(prev => prev - 1)}
+                style={{
+                  ...S.btn("var(--text-muted)", true),
+                  opacity: wizardStep === 1 ? 0.3 : 1,
+                  cursor: wizardStep === 1 ? "not-allowed" : "pointer",
+                  minHeight: 44
+                }}
+              >
+                ← Back
+              </button>
+              
+              <div style={{display:"flex",gap:8}}>
+                <button 
+                  onClick={handleSkipWizard} 
+                  style={{...S.btn("var(--text-muted)", true), minHeight: 44}}
+                >
+                  Skip
+                </button>
+                <button 
+                  disabled={wizardStep === 11}
+                  onClick={() => setWizardStep(prev => prev + 1)}
+                  style={{
+                    ...S.btn("var(--accent-color)", true),
+                    opacity: wizardStep === 11 ? 0.3 : 1,
+                    cursor: wizardStep === 11 ? "not-allowed" : "pointer",
+                    minHeight: 44
+                  }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {showIgDisconnectModal && (
+        <div style={{
+          position: "fixed",
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(18, 17, 16, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "20px"
+        }} onClick={() => setShowIgDisconnectModal(false)}>
+          <div style={{
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border-color)",
+            borderRadius: "16px",
+            padding: "24px",
+            maxWidth: "400px",
+            width: "100%",
+            boxShadow: "var(--shadow-lg)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px"
+          }} onClick={e => e.stopPropagation()} data-test-id="ig-disconnect-modal">
+            <h4 style={{ fontSize: "16px", fontWeight: "600", color: "var(--text-primary)", margin: 0 }}>Disconnect Instagram?</h4>
+            <p style={{ fontSize: "13px", color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>
+              This will remove your Instagram access token and disconnect your account. You will lose access to content pillars and AI-generated hook strategy until re-connected.
+            </p>
+            <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
+              <button
+                onClick={() => setShowIgDisconnectModal(false)}
+                style={{
+                  flex: 1,
+                  minHeight: "44px",
+                  borderRadius: "22px",
+                  border: "1px solid var(--border-color)",
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontFamily: "inherit"
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowIgDisconnectModal(false);
+                  await handleInstagramDisconnectConfirm();
+                }}
+                style={{
+                  flex: 1,
+                  minHeight: "44px",
+                  borderRadius: "22px",
+                  border: "none",
+                  background: "#f0a090",
+                  color: "#FFFFFF",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontFamily: "inherit"
+                }}
+                data-test-id="ig-confirm-disconnect-btn"
+              >
+                Disconnect
+              </button>
             </div>
           </div>
         </div>

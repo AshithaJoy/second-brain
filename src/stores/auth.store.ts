@@ -21,6 +21,7 @@ interface AuthState {
   googleLogin: (idToken: string, fallbackName?: string) => Promise<void>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
+  updateUser: (fields: any) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -28,6 +29,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   loading: false,
   initialized: false,
+
+  updateUser: (fields) => {
+    const currentUser = get().user;
+    if (currentUser) {
+      set({ user: { ...currentUser, ...fields } });
+    }
+  },
 
   login: async (email, password) => {
     set({ loading: true });

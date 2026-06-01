@@ -7,7 +7,7 @@ export default defineConfig({
     timeout: 10000,
   },
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "https://second-brain-beige-eight.vercel.app",
     // Use the system's Google Chrome instead of downloading large browser packages
     channel: "chrome",
     headless: true,

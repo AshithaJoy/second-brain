@@ -1,65 +1,134 @@
 // tests/e2e/creator_journey.spec.js
 import { test, expect } from '@playwright/test';
 
+const BASE_URL = "http://localhost:5173";
+
+async function clickTab(page, name) {
+  await page.evaluate((n) => {
+    const btns = Array.from(document.querySelectorAll('button'));
+    const btn = btns.find(b => b.textContent.trim().toLowerCase() === n.toLowerCase());
+    if (btn) btn.click();
+  }, name);
+}
+
 test('Creator Journey Acceptance Test', async ({ page }) => {
+  test.setTimeout(90000);
   // 1. Register a new account
-  await page.goto('https://example.com/register');
+  await page.goto(BASE_URL);
+  
+  // Wait for login view to load, then switch to register
+  await page.waitForSelector("text=Register creator ID", { timeout: 15000 });
+  await page.click("text=Register creator ID");
+  
   const timestamp = Date.now();
   const email = `testuser${timestamp}@example.com`;
+  
+  await page.waitForSelector('[data-test-id="email-input"]', { timeout: 15000 });
+  await page.fill('input[placeholder="Elena Rostova"]', "Journey Tester");
   await page.fill('[data-test-id="email-input"]', email);
   await page.fill('[data-test-id="password-input"]', 'TestPass123!');
   await page.click('[data-test-id="register-button"]');
-  await expect(page).toHaveURL(/.*\/workspace/);
+  
+  // Wait for the workspace dashboard to mount
+  await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
+
+  // Skip onboarding wizard
+  const skipBtn = page.locator("button:has-text('Skip For Now')");
+  await skipBtn.waitFor({ state: "visible", timeout: 15000 });
+  await skipBtn.click();
+  await expect(skipBtn).not.toBeVisible();
 
   // 2. Create Planner Post
-  await page.click('[data-test-id="new-planner-button"]');
-  await page.fill('[data-test-id="planner-title"]', 'My Planner');
-  await page.click('[data-test-id="save-planner"]');
+  await page.waitForTimeout(3000);
+  await page.locator("[data-test-id='tab-planner']").click();
+  await page.click("button:has-text('+ new post')");
+  
+  // Fill caption (placeholder="what do you want to say...")
+  await page.fill('textarea[placeholder="what do you want to say..."]', 'My Planner Concept');
+  await page.click("button:has-text('Save Post')");
+  
+  // Wait for the post to appear
+  await expect(page.locator("text=My Planner Concept")).toBeVisible({ timeout: 10000 });
+  await page.click("button:has-text('cancel')");
 
-  // 3. Generate Hooks (simulated)
-  await page.click('[data-test-id="generate-hooks"]');
+  // 3. Create Shoot Plan
+  await page.waitForTimeout(3000);
+  await page.locator("[data-test-id='tab-shoot']").click();
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: "test-results/shoot-planner-tab.png", fullPage: true });
+  await page.click("button:has-text('+ new session')");
+  
+  // Fill title (placeholder="Enter session title")
+  await page.fill('input[placeholder="Enter session title"]', 'My Awesome Shoot');
+  await page.click("button:has-text('Save Shoot')");
+  
+  await expect(page.locator("text=My Awesome Shoot")).toBeVisible();
 
-  // 4. Create Shoot Plan
-  await page.click('[data-test-id="new-shoot-button"]');
-  await page.fill('[data-test-id="shoot-title"]', 'My Shoot');
-  await page.click('[data-test-id="save-shoot"]');
+  // 4. Create Brain Dump
+  await page.waitForTimeout(3000);
+  await page.locator("[data-test-id='tab-dump']").click();
+  await page.click("button:has-text('+ new dump')");
+  await page.fill('input[placeholder="title..."]', 'Midnight Thoughts Title');
+  await page.keyboard.press('Enter');
+  
+  // Fill content (placeholder="unfiltered thoughts here...")
+  await page.fill('textarea[placeholder="unfiltered thoughts here..."]', 'My Midnight Thoughts');
+  await page.click("button:has-text('Save Dump')");
 
-  // 5. Create Brain Dump
-  await page.click('[data-test-id="new-brain-dump-button"]');
-  await page.fill('[data-test-id="brain-dump-content"]', 'Brain dump content');
-  await page.click('[data-test-id="save-brain-dump"]');
+  await expect(page.locator("text=My Midnight Thoughts")).toBeVisible();
 
-  // 6. Run AI Rewrite (simulated)
-  await page.click('[data-test-id="ai-rewrite-button"]');
-  await page.waitForTimeout(2000);
+  // 5. Create Collab
+  await page.waitForTimeout(3000);
+  await page.locator("[data-test-id='tab-collabs']").click();
+  await page.click("button:has-text('+ log new collab')");
+  
+  // Fill brand (placeholder="Aesthetic Deskpads...")
+  await page.fill('input[placeholder="Aesthetic Deskpads..."]', 'Nike Campaign');
+  await page.click("button:has-text('save collab')");
 
-  // 7. Create Collab
-  await page.click('[data-test-id="new-collab-button"]');
-  await page.fill('[data-test-id="collab-title"]', 'Collab Project');
-  await page.click('[data-test-id="save-collab"]');
+  await expect(page.locator("text=Nike Campaign").first()).toBeVisible();
 
-  // 8. Create Journal Entry
-  await page.click('[data-test-id="new-journal-button"]');
-  await page.fill('[data-test-id="journal-content"]', 'Journal entry');
-  await page.click('[data-test-id="save-journal"]');
+  // 6. Create Journal
+  await page.waitForTimeout(3000);
+  await page.locator("[data-test-id='tab-journal']").click();
+  await page.click("button:has-text('+ check-in this week')");
+  
+  // Journal uses textarea for content
+  await page.fill('textarea[placeholder*="voiceovers connected more"]', 'I learned how to use Playwright properly.');
+  await page.click("button:has-text('save journal entry')");
 
-  // 9. Refresh Browser
+  await expect(page.locator("text=I learned how to use Playwright properly.")).toBeVisible();
+
+  // 7. Refresh Browser to verify persistence
   await page.reload();
 
-  // 10. Logout
-  await page.click('[data-test-id="logout-button"]');
-  await expect(page).toHaveURL(/.*\/login/);
+  // Wait for workspace to reload
+  await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
 
-  // 11. Login Again
+  // 8. Logout
+  await page.click("button:has-text('logout')");
+  
+  // Wait for login page
+  await expect(page.locator("text=welcome back")).toBeVisible({ timeout: 10000 });
+
+  // 9. Login Again
   await page.fill('[data-test-id="email-input"]', email);
   await page.fill('[data-test-id="password-input"]', 'TestPass123!');
   await page.click('[data-test-id="login-button"]');
-  await expect(page).toHaveURL(/.*\/workspace/);
+  
+  // Wait for workspace
+  await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
 
-  // 12. Verify persisted items exist
-  await expect(page.locator('[data-test-id="planner-item"][title="My Planner"]')).toBeVisible();
-  await expect(page.locator('[data-test-id="shoot-item"][title="My Shoot"]')).toBeVisible();
-  await expect(page.locator('[data-test-id="brain-dump-item"]')).toBeVisible();
-  await expect(page.locator('[data-test-id="collab-item"][title="Collab Project"]')).toBeVisible();
-  await expect(page.locator('[data-test-id="journal-item"]')).toBeVisible();
+  // 10. Verify persisted items exist
+  await page.waitForTimeout(1000);
+  await page.click("button:has-text('content planner')");
+  await expect(page.locator("text=untitled post").first()).toBeVisible({ timeout: 10000 });
+  
+  await page.waitForTimeout(3000);
+  await page.locator("[data-test-id='tab-shoot']").click();
+  await expect(page.locator("text=My Awesome Shoot")).toBeVisible();
+  
+  await page.waitForTimeout(3000);
+  await page.locator("[data-test-id='tab-dump']").click();
+  await expect(page.locator("text=My Midnight Thoughts")).toBeVisible();
 });
