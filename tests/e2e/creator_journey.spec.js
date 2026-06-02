@@ -13,6 +13,7 @@ async function clickTab(page, name) {
 
 test('Creator Journey Acceptance Test', async ({ page }) => {
   test.setTimeout(90000);
+  page.on('dialog', dialog => dialog.accept());
   // 1. Register a new account
   await page.goto(BASE_URL);
   
