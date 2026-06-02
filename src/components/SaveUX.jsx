@@ -28,7 +28,7 @@ export function SaveButton({ onClick, isDirty, saving, label = "Save Changes", s
 
   const btnStyle = {
     padding: "8px 17px",
-    borderRadius: "20px",
+    borderRadius: "12px",
     cursor: (isDirty && !saving) ? "pointer" : "not-allowed",
     fontFamily: "inherit",
     fontSize: "12px",
@@ -41,6 +41,13 @@ export function SaveButton({ onClick, isDirty, saving, label = "Save Changes", s
     alignItems: "center",
     justifyContent: "center",
     gap: "6px",
+    ...(isDirty && !saving ? {
+      "--btn-bg": "var(--accent-color)",
+      "--btn-color": "var(--bg-secondary)",
+      "--btn-border": "var(--accent-color)",
+      "--btn-hover-bg": "#F891BB",
+      "--btn-hover-color": "#FFFFFF",
+    } : {}),
     ...style
   };
 
@@ -71,9 +78,9 @@ export function SaveToast({ message, type = "success", onClose, duration = 3000 
     position: "fixed",
     bottom: "24px",
     right: "24px",
-    background: type === "success" ? "rgba(168, 200, 160, 0.95)" : "rgba(240, 160, 144, 0.95)",
-    color: type === "success" ? "#1e331b" : "#4a1c14",
-    border: `1px solid ${type === "success" ? "#a8c8a0" : "#f0a090"}`,
+    background: type === "success" ? "rgba(250, 255, 203, 0.95)" : "rgba(240, 160, 144, 0.95)",
+    color: type === "success" ? "#5E5300" : "#4a1c14",
+    border: `1px solid ${type === "success" ? "#FAFFCB" : "#f0a090"}`,
     borderRadius: "12px",
     padding: "12px 20px",
     fontSize: "13px",

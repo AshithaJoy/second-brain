@@ -181,7 +181,7 @@ export default function Login({ onSwitchToRegister }) {
               color: "#FFFFFF",
               fontSize: 14,
               cursor: loading ? "not-allowed" : "pointer",
-              boxShadow: "0 8px 24px rgba(94, 92, 230, 0.2)",
+              boxShadow: "0 8px 24px rgba(241, 62, 147, 0.15)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

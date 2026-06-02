@@ -86,7 +86,8 @@ const POST_TYPES   = ["reel","carousel","story","note"];
 const TYPE_ICONS   = {reel:"▶",carousel:"⊞",story:"◯",note:"✎"};
 const DAYS         = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS       = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const STATUS_COLORS= {draft:"#c9b99a",scheduled:"#a8c8a0",posted:"#a0b8c8",archived:"#b8b8c8"};
+const STATUS_COLORS= {draft:"#F9D0CD",scheduled:"#FAFFCB",posted:"#F891BB",archived:"#b8b8c8"};
+const STATUS_TEXT_COLORS = {draft:"#9C1D54",scheduled:"#706000",posted:"#F13E93",archived:"#736F6A"};
 
 const RATES = {
   reel: 500,
@@ -291,7 +292,24 @@ const MOCK_TRENDS_DATA = {
 
 // ── shared tiny components ─────────────────────────────────────────────────────
 function Tag({label,color,size=12}){
-  return <span style={{fontSize:size,padding:"2px 9px",borderRadius:20,background:color+"22",color,fontWeight:500,letterSpacing:0.3,whiteSpace:"nowrap"}}>{label}</span>;
+  let bgColor = color + "22";
+  let textColor = color;
+  
+  if (color === "#F9D0CD" || color === "var(--accent-light)") {
+    bgColor = "#F9D0CD";
+    textColor = "#9C1D54";
+  } else if (color === "#FAFFCB") {
+    bgColor = "#FAFFCB";
+    textColor = "#706000";
+  } else if (color === "#F891BB" || color === "var(--accent-dark)") {
+    bgColor = "#F891BB";
+    textColor = "#4A0225";
+  } else if (color === "#F13E93" || color === "var(--accent-color)") {
+    bgColor = "rgba(241, 62, 147, 0.08)";
+    textColor = "#F13E93";
+  }
+  
+  return <span style={{fontSize:size,padding:"2px 9px",borderRadius:20,background:bgColor,color:textColor,fontWeight:600,letterSpacing:0.3,whiteSpace:"nowrap"}}>{label}</span>;
 }
 function MoodPicker({value,onChange,moods=MOODS}){
   return(
@@ -442,7 +460,38 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery,showToa
     textarea:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",resize:"vertical",minHeight:70,boxSizing:"border-box"},
     label:{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4},
     card:{background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)",padding:"18px",marginBottom:12},
-    btn:(color="#c9b99a",sm=false)=>({padding:sm?"4px 12px":"8px 17px",borderRadius:20,border:`1px solid ${color}`,background:`${color}16`,color,fontSize:sm?11:12,cursor:"pointer",fontFamily:"inherit",transition:"all 0.18s"}),
+    btn:(color="var(--accent-color)",sm=false)=>{
+      const isPrimary = color === "var(--accent-color)" || color === "#F13E93";
+      const isSecondary = color === "var(--accent-light)" || color === "#F9D0CD" || color === "secondary";
+      const borderRadius = (isPrimary || isSecondary) ? "12px" : "20px";
+      const bg = isPrimary ? "#F13E93" : (isSecondary ? "#F9D0CD" : `${color}16`);
+      const fg = isPrimary ? "#FFFFFF" : (isSecondary ? "#F13E93" : color);
+      const border = isPrimary ? "#F13E93" : (isSecondary ? "#F9D0CD" : color);
+      return {
+        padding: sm ? "4px 12px" : "8px 17px",
+        borderRadius,
+        border: `1px solid ${border}`,
+        background: bg,
+        color: fg,
+        fontSize: sm ? 11 : 12,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        transition: "all 0.18s",
+        ...(isPrimary && !isSecondary ? {
+          "--btn-bg": "#F13E93",
+          "--btn-color": "#FFFFFF",
+          "--btn-border": "#F13E93",
+          "--btn-hover-bg": "#F891BB",
+          "--btn-hover-color": "#FFFFFF",
+        } : (isSecondary ? {
+          "--btn-bg": "#F9D0CD",
+          "--btn-color": "#F13E93",
+          "--btn-border": "#F9D0CD",
+          "--btn-hover-bg": "#F891BB",
+          "--btn-hover-color": "#FFFFFF",
+        } : {}))
+      };
+    },
     row:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"},
     grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12},
   };
@@ -655,9 +704,9 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery,showToa
 
       {/* empty state */}
       {vault.length===0&&(
-        <div style={{textAlign:"center",paddingTop:80,color:"var(--text-muted)",lineHeight:2.2}}>
+        <div className="empty-state-card" style={{padding: "40px 20px", color:"var(--text-muted)", lineHeight:2.2}}>
           <div style={{fontSize:36,opacity:0.18,marginBottom:8}}>◎</div>
-          <div style={{fontSize:15,fontStyle:"italic"}}>your future montages live here</div>
+          <div style={{fontSize:15,fontStyle:"italic",color:"var(--text-primary)",fontWeight:500}}>your future montages live here</div>
           <div style={{fontSize:12}}>capture ordinary moments before they disappear</div>
           <div style={{fontSize:12}}>the quiet clips matter too</div>
           <button style={{...S.btn("var(--accent-color)"),marginTop:20}} onClick={()=>setView("add")}>add your first clip</button>
@@ -2405,19 +2454,37 @@ export default function App(){
     label:{fontSize:12,color:"var(--text-muted)",letterSpacing:0.4,marginBottom:4,display:"block"},
     input:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",boxSizing:"border-box"},
     textarea:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",resize:"vertical",minHeight:80,boxSizing:"border-box"},
-    btn:(color="#c9b99a",sm=false)=>{
-      const isPrimary = color === "var(--accent-color)";
+    btn:(color="var(--accent-color)",sm=false)=>{
+      const isPrimary = color === "var(--accent-color)" || color === "#F13E93";
+      const isSecondary = color === "var(--accent-light)" || color === "#F9D0CD" || color === "secondary";
+      const borderRadius = (isPrimary || isSecondary) ? "12px" : "20px";
+      const bg = isPrimary ? "#F13E93" : (isSecondary ? "#F9D0CD" : `${color}16`);
+      const fg = isPrimary ? "#FFFFFF" : (isSecondary ? "#F13E93" : color);
+      const border = isPrimary ? "#F13E93" : (isSecondary ? "#F9D0CD" : color);
       return {
         padding: sm ? "4px 12px" : "8px 17px",
-        borderRadius: 20,
-        border: isPrimary ? "1px solid var(--border-focus)" : `1px solid ${color}`,
-        background: isPrimary ? "var(--accent-color)" : `${color}16`,
-        color: isPrimary ? "var(--bg-secondary)" : color,
+        borderRadius,
+        border: `1px solid ${border}`,
+        background: bg,
+        color: fg,
         fontSize: sm ? 11 : 12,
         cursor: "pointer",
         fontFamily: "inherit",
         transition: "all 0.18s",
-        whiteSpace: "nowrap"
+        whiteSpace: "nowrap",
+        ...(isPrimary && !isSecondary ? {
+          "--btn-bg": "#F13E93",
+          "--btn-color": "#FFFFFF",
+          "--btn-border": "#F13E93",
+          "--btn-hover-bg": "#F891BB",
+          "--btn-hover-color": "#FFFFFF",
+        } : (isSecondary ? {
+          "--btn-bg": "#F9D0CD",
+          "--btn-color": "#F13E93",
+          "--btn-border": "#F9D0CD",
+          "--btn-hover-bg": "#F891BB",
+          "--btn-hover-color": "#FFFFFF",
+        } : {}))
       };
     },
     grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12},
@@ -3316,7 +3383,7 @@ export default function App(){
       <div style={{padding:"24px 28px"}}>
         {user && !profileStatus.complete && skipWizard && (
           <div data-test-id="creator-dna-banner" style={{
-            background: "rgba(201, 185, 154, 0.1)",
+            background: "rgba(241, 62, 147, 0.08)",
             border: "1px solid var(--accent-color)",
             borderRadius: 12,
             padding: "12px 18px",
@@ -4171,18 +4238,27 @@ export default function App(){
                           {label:"weekly posts",key:"posts",val:j.posts},
                           {label:"reach",key:"reach",val:j.reach},
                           {label:"saves",key:"saves",val:j.saves}
-                        ].map(st=>(
-                          <div key={st.label} style={{background:"var(--bg-primary)",borderRadius:12,padding:12,border:"1px solid var(--border-color)"}}>
-                            <span style={{fontSize:11,color:"var(--text-muted)",textTransform:"capitalize"}}>{st.label}</span>
-                            <div style={{fontSize:18,fontWeight:500,margin:"2px 0"}}>{st.val}</div>
-                            {journal.length>=2 && (
-                              <svg width="100%" height="45" style={{marginTop:4,overflow:"visible"}}>
-                                <path className="sparkline" d={makePath(st.key)} fill="none" stroke="var(--accent-color)" strokeWidth="1.5" />
-                                <circle cx={150} cy={40 - (((st.val - Math.min(...journal.map(x=>x[st.key]||0))) / (Math.max(...journal.map(x=>x[st.key]||0)) - Math.min(...journal.map(x=>x[st.key]||0)) || 1)) * 30)} r="2" fill="var(--accent-dark)"/>
-                              </svg>
-                            )}
-                          </div>
-                        ))}
+                        ].map(st=>{
+                          const isKpi = st.key === "followers" || st.key === "reach" || st.key === "saves";
+                          return (
+                            <div key={st.label} className={isKpi ? "kpi-card-gradient" : ""} style={{
+                              background: isKpi ? undefined : "var(--bg-primary)",
+                              borderRadius: 12,
+                              padding: 12,
+                              border: isKpi ? "none" : "1px solid var(--border-color)",
+                              color: isKpi ? "#FFFFFF" : "var(--text-primary)"
+                            }}>
+                              <span style={{fontSize:11,color:isKpi ? "rgba(255,255,255,0.85)" : "var(--text-muted)",textTransform:"capitalize"}}>{st.label}</span>
+                              <div style={{fontSize:18,fontWeight:500,margin:"2px 0",color:isKpi ? "#FFFFFF" : "var(--text-primary)"}}>{st.val}</div>
+                              {journal.length>=2 && (
+                                <svg width="100%" height="45" style={{marginTop:4,overflow:"visible"}}>
+                                  <path className="sparkline" d={makePath(st.key)} fill="none" stroke={isKpi ? "#FFFFFF" : "var(--accent-color)"} strokeWidth="1.5" />
+                                  <circle cx={150} cy={40 - (((st.val - Math.min(...journal.map(x=>x[st.key]||0))) / (Math.max(...journal.map(x=>x[st.key]||0)) - Math.min(...journal.map(x=>x[st.key]||0)) || 1)) * 30)} r="2" fill={isKpi ? "#FAFFCB" : "var(--accent-dark)"}/>
+                                </svg>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Text Reflections */}
@@ -4755,9 +4831,9 @@ export default function App(){
                     <p style={{fontSize: 12, color: "var(--text-muted)", marginTop: 4}}>Fetching recent media, building hook database, and running AI recommendations engine.</p>
                   </div>
                 ) : !intelligence ? (
-                  <div style={{textAlign: "center", padding: "60px 20px", background: "var(--bg-secondary)", borderRadius: 16, border: "1px solid var(--border-color)"}}>
+                  <div className="empty-state-card" style={{padding: "60px 20px"}}>
                     <div style={{fontSize: 32, marginBottom: 12, opacity: 0.4}}>📊</div>
-                    <h3 style={{fontWeight: 500, fontSize: 16}}>No snapshot cache compiled yet</h3>
+                    <h3 style={{fontWeight: 500, fontSize: 16, color: "var(--text-primary)"}}>No snapshot cache compiled yet</h3>
                     <p style={{fontSize: 13, color: "var(--text-secondary)", margin: "6px auto 16px", maxWidth: 360}}>Run your initial channel synchronization to parse content cadence, pillars, and opportunities.</p>
                     <button onClick={handleSyncInstagram} style={S.btn("var(--accent-color)")}>⚡ Sync Instagram Channel</button>
                   </div>
@@ -4769,37 +4845,37 @@ export default function App(){
                       {/* Left: Overall Health & Opportunities */}
                       <div>
                         {/* Health Score Card */}
-                        <div style={{...S.card, padding: 20}}>
-                          <span style={S.label}>Creator Health Index</span>
+                        <div className="kpi-card-gradient" style={{...S.card, padding: 20}}>
+                          <span style={{...S.label, color: "#FFFFFF"}}>Creator Health Index</span>
                           <div style={{display: "flex", alignItems: "center", gap: 20, margin: "14px 0"}}>
                             <div style={{
                               width: 74, 
                               height: 74, 
                               borderRadius: "50%", 
-                              border: "4px solid var(--accent-light)", 
-                              borderTopColor: "var(--accent-color)", 
+                              border: "4px solid rgba(255, 255, 255, 0.3)", 
+                              borderTopColor: "#FFFFFF", 
                               display: "flex", 
                               alignItems: "center", 
                               justifyContent: "center",
                               fontSize: 22,
                               fontWeight: 600,
-                              color: "var(--text-primary)"
+                              color: "#FFFFFF"
                             }}>
                               {intelligence.creatorHealthScore || 0}
                             </div>
                             <div>
-                              <h4 style={{fontSize: 14, fontWeight: 600, color: "var(--text-primary)"}}>Stable Growth Index</h4>
-                              <p style={{fontSize: 11, color: "var(--text-secondary)", marginTop: 2}}>Based on calculated posting gaps, format variety, and hook engagement stability.</p>
+                              <h4 style={{fontSize: 14, fontWeight: 600, color: "#FFFFFF"}}>Stable Growth Index</h4>
+                              <p style={{fontSize: 11, color: "rgba(255, 255, 255, 0.85)", marginTop: 2}}>Based on calculated posting gaps, format variety, and hook engagement stability.</p>
                             </div>
                           </div>
-                          <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, borderTop: "1px solid var(--border-color)", paddingTop: 12, fontSize: 12}}>
+                          <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, borderTop: "1px solid rgba(255, 255, 255, 0.15)", paddingTop: 12, fontSize: 12}}>
                             <div>
-                              <span style={{color: "var(--text-muted)", display: "block"}}>Consistency</span>
-                              <strong>{intelligence.consistencyScore || 0} / 100</strong>
+                              <span style={{color: "rgba(255, 255, 255, 0.85)", display: "block"}}>Consistency</span>
+                              <strong style={{color: "#FFFFFF"}}>{intelligence.consistencyScore || 0} / 100</strong>
                             </div>
                             <div>
-                              <span style={{color: "var(--text-muted)", display: "block"}}>Format Mix</span>
-                              <strong>Reels {intelligence.contentDistribution?.reelsPercentage || 0}%</strong>
+                              <span style={{color: "rgba(255, 255, 255, 0.85)", display: "block"}}>Format Mix</span>
+                              <strong style={{color: "#FFFFFF"}}>Reels {intelligence.contentDistribution?.reelsPercentage || 0}%</strong>
                             </div>
                           </div>
                         </div>
@@ -4809,10 +4885,7 @@ export default function App(){
                           <span style={S.label}>Opportunity Engine Findings</span>
                           <div style={{display: "flex", flexDirection: "column", gap: 10, marginTop: 12}}>
                             {intelligence.opportunities && intelligence.opportunities.map((opp, idx) => (
-                              <div key={idx} style={{
-                                background: "var(--bg-primary)", 
-                                border: "1px solid var(--border-color)", 
-                                borderLeft: "3.5px solid var(--border-focus)", 
+                              <div key={idx} className="opportunity-card" style={{
                                 padding: "10px 12px", 
                                 borderRadius: 8, 
                                 fontSize: 12,
@@ -4820,7 +4893,7 @@ export default function App(){
                                 gap: 8
                               }}>
                                 <span>⚠️</span>
-                                <span style={{color: "var(--text-secondary)", lineHeight: 1.4}}>{opp}</span>
+                                <span style={{color: "#5E5300", lineHeight: 1.4, fontWeight: 500}}>{opp}</span>
                               </div>
                             ))}
                           </div>
@@ -4831,7 +4904,7 @@ export default function App(){
                           <span style={S.label}>Deterministic Content Pillars (Captions Audit)</span>
                           <div style={{marginTop: 14}}>
                             {Object.entries(intelligence.contentPillars || {}).map(([pillar, pct]) => {
-                              const colors = { productivity: "var(--accent-color)", business: "#a0b8c8", lifestyle: "#d4c5e2", personal: "#a8c8a0" };
+                              const colors = { productivity: "#F13E93", business: "#F891BB", lifestyle: "#F9D0CD", personal: "#FAFFCB" };
                               const col = colors[pillar] || "var(--text-muted)";
                               return (
                                 <div key={pillar} style={{marginBottom: 10}}>
@@ -4839,7 +4912,7 @@ export default function App(){
                                     <span>{pillar}</span>
                                     <strong>{pct}%</strong>
                                   </div>
-                                  <div style={{height: 6, background: "var(--bg-primary)", borderRadius: 3}}>
+                                  <div style={{height: 6, background: "var(--bg-primary)", borderRadius: 3, border: col === "#FAFFCB" ? "1px solid #F13E93" : "none"}}>
                                     <div style={{height: "100%", width: `${pct}%`, background: col, borderRadius: 3}}></div>
                                   </div>
                                 </div>
@@ -4892,13 +4965,13 @@ export default function App(){
                         </div>
 
                         {/* AI Suggested Hook Improvements */}
-                        <div style={{...S.card, padding: 20}}>
-                          <span style={S.label}>AI Hook Optimization Proposals</span>
+                        <div className="ai-panel" style={{...S.card, padding: 20}}>
+                          <span style={{...S.label, color: "#F13E93", fontWeight: 600}}>AI Hook Optimization Proposals</span>
                           <div style={{display: "flex", flexDirection: "column", gap: 10, marginTop: 12}}>
                             {intelligence.hookAnalysis?.suggestedHooks?.slice(0, 2).map((hookOpt, idx) => (
-                              <div key={idx} style={{background: "var(--bg-primary)", border: "1px solid var(--border-color)", padding: 10, borderRadius: 10, fontSize: 12}}>
+                              <div key={idx} style={{background: "#FFFFFF", border: "1px solid #F9D0CD", padding: 10, borderRadius: 10, fontSize: 12}}>
                                 <div style={{color: "var(--text-muted)", textDecoration: "line-through", fontSize: 11}}>"{hookOpt.original}"</div>
-                                <div style={{color: "var(--accent-color)", fontWeight: 500, margin: "2px 0 4px 0"}}>🎯 "{hookOpt.improved}"</div>
+                                <div style={{color: "#F13E93", fontWeight: 600, margin: "2px 0 4px 0"}}>🎯 "{hookOpt.improved}"</div>
                                 <div style={{fontSize: 10, color: "var(--text-secondary)", fontStyle: "italic"}}>{hookOpt.rationale}</div>
                               </div>
                             ))}
@@ -4909,8 +4982,8 @@ export default function App(){
                     </div>
 
                     {/* AI Content Ideas & Drafting Panel */}
-                    <div style={{...S.card, padding: 20}}>
-                      <span style={S.label}>AI Creator Strategy Panel</span>
+                    <div className="ai-panel" style={{...S.card, padding: 20}}>
+                      <span style={{...S.label, color: "#F13E93", fontWeight: 600}}>AI Creator Strategy Panel</span>
                       
                       <div style={{display: "flex", gap: 6, marginBottom: 14, marginTop: 10, borderBottom: "1px solid var(--border-color)", paddingBottom: 10}}>
                         {["reels", "carousels", "stories"].map((t) => (
@@ -4919,8 +4992,8 @@ export default function App(){
                             fontSize: 12,
                             borderRadius: 12,
                             border: "none",
-                            background: ideaTab === t ? "var(--accent-light)" : "transparent",
-                            color: ideaTab === t ? "var(--accent-color)" : "var(--text-muted)",
+                            background: ideaTab === t ? "#F9D0CD" : "transparent",
+                            color: ideaTab === t ? "#F13E93" : "var(--text-muted)",
                             fontWeight: ideaTab === t ? 600 : 400,
                             cursor: "pointer"
                           }}>
@@ -4932,9 +5005,9 @@ export default function App(){
                       <div>
                         {intelligence.contentIdeas?.[ideaTab]?.map((idea, idx) => (
                           <div key={idx} style={{
-                            background: "var(--bg-primary)", 
+                            background: "#FFFFFF", 
                             borderRadius: 12, 
-                            border: "1px solid var(--border-color)", 
+                            border: "1px solid #F9D0CD", 
                             padding: 14, 
                             marginBottom: 12,
                             display: "flex",
@@ -4946,7 +5019,7 @@ export default function App(){
                               <h4 style={{fontSize: 13, fontWeight: 600, color: "var(--text-primary)"}}>{idea.title}</h4>
                               <p style={{fontSize: 12, color: "var(--text-secondary)", marginTop: 4, lineHeight: 1.5}}>{idea.concept}</p>
                               {idea.suggestedHook && (
-                                <div style={{marginTop: 6, fontSize: 11, fontStyle: "italic", color: "var(--accent-color)"}}>
+                                <div style={{marginTop: 6, fontSize: 11, fontStyle: "italic", color: "#F13E93", fontWeight: 500}}>
                                   <strong>Visual Hook:</strong> "{idea.suggestedHook}"
                                 </div>
                               )}
@@ -4983,7 +5056,7 @@ export default function App(){
                 {/* Visual percentage score */}
                 <div style={{
                   display:"flex",alignItems:"center",gap:16,marginBottom:20,
-                  padding:14,borderRadius:12,background:"rgba(201, 185, 154, 0.1)",border:"1px solid var(--border-color)"
+                  padding:14,borderRadius:12,background:"rgba(241, 62, 147, 0.08)",border:"1px solid var(--border-color)"
                 }}>
                   <div style={{
                     fontSize:24,fontWeight:700,color:"var(--accent-color)"
@@ -5049,7 +5122,7 @@ export default function App(){
                         return (
                           <button key={n} onClick={() => toggleSecondaryNiche(n)} style={{
                             ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
-                            background: active ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                            background: active ? "rgba(241, 62, 147, 0.12)" : "transparent",
                             minHeight: 44,
                             padding: "8px 16px"
                           }}>{n}</button>
@@ -5123,7 +5196,7 @@ export default function App(){
                         return (
                           <button key={f} onClick={() => togglePreferredFormat(f)} style={{
                             ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
-                            background: active ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                            background: active ? "rgba(241, 62, 147, 0.12)" : "transparent",
                             minHeight: 44,
                             padding: "8px 16px"
                           }}>{f}</button>
@@ -5141,7 +5214,7 @@ export default function App(){
                         return (
                           <button key={p} onClick={() => toggleContentPillar(p)} style={{
                             ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
-                            background: active ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                            background: active ? "rgba(241, 62, 147, 0.12)" : "transparent",
                             minHeight: 44,
                             padding: "8px 16px"
                           }}>{p}</button>
@@ -5752,13 +5825,14 @@ export default function App(){
           zIndex: 1100,
           padding: "20px"
         }}>
-          <div className="card-in" style={{
+          <div className="card-in wizard-question-card" style={{
             ...S.card,
+            background: "#FFFFFF",
             width: "100%",
             maxWidth: "600px",
             maxHeight: "90vh",
             overflowY: "auto",
-            border: "1px solid var(--border-focus)",
+            border: "1px solid #F9D0CD",
             boxShadow: "var(--shadow-lg)",
             margin: 0,
             padding: "24px"
@@ -5786,6 +5860,28 @@ export default function App(){
               </button>
             </div>
 
+            {/* Visual Step Dot Indicators */}
+            <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:16}}>
+              {Array.from({length:11}).map((_,i)=>{
+                const stepNum = i + 1;
+                const isActive = wizardStep === stepNum;
+                const isCompleted = wizardStep > stepNum;
+                let dotBg = "var(--border-color)";
+                if (isActive) dotBg = "#F13E93";
+                else if (isCompleted) dotBg = "#F891BB";
+                
+                return (
+                  <div key={i} style={{
+                    width: isActive ? 10 : 8,
+                    height: isActive ? 10 : 8,
+                    borderRadius: "50%",
+                    background: dotBg,
+                    transition: "all var(--transition-fast)"
+                  }}/>
+                );
+              })}
+            </div>
+
             {/* Progress bar */}
             <div style={{
               width: "100%",
@@ -5798,7 +5894,7 @@ export default function App(){
               <div style={{
                 width: `${(wizardStep / 11) * 100}%`,
                 height: "100%",
-                background: "var(--accent-color)",
+                background: "#F13E93",
                 transition: "width 0.3s ease"
               }}/>
             </div>
@@ -5820,7 +5916,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.primaryNiche === n ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.primaryNiche === n ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.primaryNiche === n ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           padding: "10px 14px",
                           fontWeight: wizardForm.primaryNiche === n ? 600 : 400
@@ -5843,7 +5939,7 @@ export default function App(){
                         onClick={() => toggleSecondaryNiche(n)} 
                         style={{
                           ...S.btn(wizardForm.secondaryNiches.includes(n) ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.secondaryNiches.includes(n) ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.secondaryNiches.includes(n) ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           padding: "10px 14px",
                           fontWeight: wizardForm.secondaryNiches.includes(n) ? 600 : 400
@@ -5871,7 +5967,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.primaryGoal === g ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.primaryGoal === g ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.primaryGoal === g ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           textAlign: "left",
                           padding: "12px 18px",
@@ -5900,7 +5996,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.audienceSize === a ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.audienceSize === a ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.audienceSize === a ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           textAlign: "left",
                           padding: "12px 18px",
@@ -5929,7 +6025,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.creatorStage === s ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.creatorStage === s ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.creatorStage === s ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           textAlign: "left",
                           padding: "12px 18px",
@@ -5958,7 +6054,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.postingFrequency === f ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.postingFrequency === f ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.postingFrequency === f ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           textAlign: "left",
                           padding: "12px 18px",
@@ -5982,7 +6078,7 @@ export default function App(){
                         onClick={() => togglePreferredFormat(f)} 
                         style={{
                           ...S.btn(wizardForm.preferredFormats.includes(f) ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.preferredFormats.includes(f) ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.preferredFormats.includes(f) ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           textAlign: "left",
                           padding: "12px 18px",
@@ -6006,7 +6102,7 @@ export default function App(){
                         onClick={() => toggleContentPillar(p)} 
                         style={{
                           ...S.btn(wizardForm.contentPillars.includes(p) ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.contentPillars.includes(p) ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.contentPillars.includes(p) ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           padding: "10px 14px",
                           fontWeight: wizardForm.contentPillars.includes(p) ? 600 : 400
@@ -6034,7 +6130,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.toneOfVoice === t ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.toneOfVoice === t ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.toneOfVoice === t ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           padding: "10px 14px",
                           fontWeight: wizardForm.toneOfVoice === t ? 600 : 400
@@ -6062,7 +6158,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.biggestChallenge === c ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.biggestChallenge === c ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.biggestChallenge === c ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 44,
                           padding: "10px 14px",
                           fontWeight: wizardForm.biggestChallenge === c ? 600 : 400
@@ -6097,7 +6193,7 @@ export default function App(){
                         }} 
                         style={{
                           ...S.btn(wizardForm.aiAssistanceLevel === l.key ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.aiAssistanceLevel === l.key ? "rgba(201, 185, 154, 0.15)" : "transparent",
+                          background: wizardForm.aiAssistanceLevel === l.key ? "rgba(241, 62, 147, 0.12)" : "transparent",
                           minHeight: 54,
                           textAlign: "left",
                           padding: "12px 18px",

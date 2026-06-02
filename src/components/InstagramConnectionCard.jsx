@@ -51,24 +51,38 @@ export default function InstagramConnectionCard({
       lineHeight: "1.6",
       margin: 0
     },
-    btn: (color = "var(--accent-color)", disabled = false) => ({
-      minHeight: "44px",
-      padding: "10px 18px",
-      borderRadius: "24px",
-      border: `1.5px solid ${disabled ? "var(--border-color)" : color}`,
-      background: disabled ? "transparent" : `${color}15`,
-      color: disabled ? "var(--text-muted)" : color,
-      fontSize: "13px",
-      fontWeight: "600",
-      cursor: disabled ? "not-allowed" : "pointer",
-      fontFamily: "inherit",
-      transition: "all 0.2s ease",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "8px",
-      width: "100%"
-    }),
+    btn: (color = "var(--accent-color)", disabled = false) => {
+      const isPrimary = color === "var(--accent-color)" || color === "#F13E93";
+      const borderRadius = isPrimary ? "12px" : "24px";
+      const bg = disabled ? "transparent" : (isPrimary ? "#F13E93" : `${color}15`);
+      const fg = disabled ? "var(--text-muted)" : (isPrimary ? "#FFFFFF" : color);
+      const border = `1.5px solid ${disabled ? "var(--border-color)" : (isPrimary ? "#F13E93" : color)}`;
+      return {
+        minHeight: "44px",
+        padding: "10px 18px",
+        borderRadius,
+        border,
+        background: bg,
+        color: fg,
+        fontSize: "13px",
+        fontWeight: "600",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontFamily: "inherit",
+        transition: "all 0.2s ease",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "8px",
+        width: "100%",
+        ...(isPrimary && !disabled ? {
+          "--btn-bg": "#F13E93",
+          "--btn-color": "#FFFFFF",
+          "--btn-border": "#F13E93",
+          "--btn-hover-bg": "#F891BB",
+          "--btn-hover-color": "#FFFFFF",
+        } : {})
+      };
+    },
     checklist: {
       display: "flex",
       flexDirection: "column",
