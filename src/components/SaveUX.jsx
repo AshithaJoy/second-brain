@@ -16,7 +16,7 @@ const spinnerStyle = `
   }
 `;
 
-export function SaveButton({ onClick, isDirty, saving, label = "Save Changes", style = {} }) {
+export function SaveButton({ onClick, isDirty, saving, label = "Save Changes", style = {}, ...props }) {
   useEffect(() => {
     if (!document.getElementById("save-spinner-styles")) {
       const styleEl = document.createElement("style");
@@ -52,7 +52,7 @@ export function SaveButton({ onClick, isDirty, saving, label = "Save Changes", s
   };
 
   return (
-    <button data-testid="creator-dna-save" onClick={(isDirty && !saving) ? onClick : undefined} style={btnStyle} disabled={!isDirty || saving}>
+    <button data-testid="creator-dna-save" {...props} onClick={(isDirty && !saving) ? onClick : undefined} style={btnStyle} disabled={!isDirty || saving}>
       {saving ? (
         <>
           <span className="save-spinner"></span>

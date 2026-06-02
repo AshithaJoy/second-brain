@@ -45,11 +45,11 @@ test('Creator Journey Acceptance Test', async ({ page }) => {
   
   // Fill caption (placeholder="what do you want to say...")
   await page.fill('textarea[placeholder="what do you want to say..."]', 'My Planner Concept');
-  await page.click("button:has-text('Save Post')");
+  await page.getByTestId("planner-save").click();
   
   // Wait for the post to appear
   await expect(page.locator("text=My Planner Concept")).toBeVisible({ timeout: 10000 });
-  await page.click("button:has-text('cancel')");
+  await page.getByTestId("planner-cancel").click();
 
   // 3. Create Shoot Plan
   await page.waitForTimeout(3000);

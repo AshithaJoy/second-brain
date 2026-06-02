@@ -5836,13 +5836,13 @@ export default function App(){
               })()}
             </div>
             <div style={{...S.row,justifyContent:"flex-end",marginTop:14,gap:10}}>
-              <SaveButton label="Save Post" isDirty={postIsDirty} saving={savingPost} onClick={handleSavePost} />
+              <SaveButton data-testid="planner-save" data-test-id="planner-save" label="Save Post" isDirty={postIsDirty} saving={savingPost} onClick={handleSavePost} />
               {postIsDirty && (
                 <button style={S.btn("var(--text-muted)", true)} onClick={handleResetPost}>Reset</button>
               )}
               <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(localPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
               <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(localPost.id)}>delete forever</button>
-              <button style={S.btn("var(--text-muted)",true)} onClick={handleCancelPost}>cancel</button>
+              <button data-testid="planner-cancel" data-test-id="planner-cancel" style={S.btn("var(--text-muted)",true)} onClick={handleCancelPost}>cancel</button>
             </div>
           </div>
         </div>
