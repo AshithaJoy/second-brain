@@ -1142,6 +1142,16 @@ export default function App(){
     }
   };
 
+  // Path-based routing effect
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === "/settings") {
+      setTab("settings");
+    } else if (path === "/instagram") {
+      setTab("instagram");
+    }
+  }, []);
+
   // URL query parameter callback handling effect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1158,15 +1168,16 @@ export default function App(){
       
       showToast("Instagram account connected! Initializing auto sync...");
       handleAutoSyncAfterConnection();
-    } else if (connectError) {
-      trackAnalyticsEvent("instagram_oauth_callback_received", { success: false, error: connectError });
+    } else if (connectError || connectSuccess === "error") {
+      const errMsg = connectError || params.get("error_description") || "OAuth connection failed";
+      trackAnalyticsEvent("instagram_oauth_callback_received", { success: false, error: errMsg });
       
       const newUrl = window.location.pathname + window.location.hash;
       window.history.replaceState({}, document.title, newUrl);
       
-      setIgError(connectError);
-      showToast(`Instagram connection failed: ${connectError}`, "error");
-      trackAnalyticsEvent("instagram_connection_failed", { error: connectError });
+      setIgError(errMsg);
+      showToast(`Instagram connection failed: ${errMsg}`, "error");
+      trackAnalyticsEvent("instagram_connection_failed", { error: errMsg });
     }
   }, []);
 
@@ -4322,22 +4333,46 @@ export default function App(){
                   <p style={{ fontSize: "13px", color: "var(--text-secondary)", margin: "0 0 14px 0", lineHeight: 1.5 }}>
                     Link your Instagram creator account to import live profile data, track real-time analytics, and display recent media directly inside the operating system.
                   </p>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <input
-                      type="password"
-                      value={igAccessToken}
-                      onChange={(e) => setIgAccessToken(e.target.value)}
-                      style={{ ...S.input, flex: 1, padding: "10px 14px" }}
-                      placeholder="Paste your Meta User Access Token (EAAN...) here"
-                    />
+                  {import.meta.env.DEV ? (
+                    <div style={{ display: "flex", gap: "10px", flexDirection: "column" }}>
+                      <div style={{ display: "flex", gap: "10px", alignItems: "center", width: "100%" }}>
+                        <input
+                          type="password"
+                          value={igAccessToken}
+                          onChange={(e) => setIgAccessToken(e.target.value)}
+                          style={{ ...S.input, flex: 1, padding: "10px 14px" }}
+                          placeholder="[DEV ONLY] Paste Meta User Access Token (EAAN...) here"
+                        />
+                        <button
+                          onClick={handleConnectInstagram}
+                          disabled={igLoading || !igAccessToken.trim()}
+                          style={{ ...S.btn("var(--accent-color)", true), padding: "10px 20px", whiteSpace: "nowrap" }}
+                        >
+                          {igLoading ? "Connecting..." : "Link Channel"}
+                        </button>
+                      </div>
+                      <div style={{ width: "100%", textAlign: "center", margin: "8px 0" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>— OR USE OAUTH —</span>
+                      </div>
+                      <button
+                        onClick={handleInstagramConnectClick}
+                        disabled={igLoading}
+                        style={{ ...S.btn("var(--accent-color)"), minHeight: "44px", width: "100%", fontWeight: "600" }}
+                        data-test-id="ig-trends-connect-btn"
+                      >
+                        🔌 Connect Instagram (OAuth)
+                      </button>
+                    </div>
+                  ) : (
                     <button
-                      onClick={handleConnectInstagram}
-                      disabled={igLoading || !igAccessToken.trim()}
-                      style={{ ...S.btn("var(--accent-color)", true), padding: "10px 20px" }}
+                      onClick={handleInstagramConnectClick}
+                      disabled={igLoading}
+                      style={{ ...S.btn("var(--accent-color)"), minHeight: "44px", width: "100%", fontWeight: "600" }}
+                      data-test-id="ig-trends-connect-btn"
                     >
-                      {igLoading ? "Connecting..." : "Link Channel"}
+                      🔌 Connect Instagram
                     </button>
-                  </div>
+                  )}
                 </div>
               ) : (
                 <div>
@@ -4613,29 +4648,60 @@ export default function App(){
                 maxWidth: "600px",
                 margin: "40px auto",
                 textAlign: "center"
-              }} className="card-in">
+              }} className="card-in" data-test-id="ig-dashboard-not-connected">
                 <div style={{fontSize: "36px", marginBottom: "12px"}}>📸</div>
                 <h3 style={{fontSize: "18px", fontWeight: 600, marginBottom: "8px"}}>Connect your Instagram Channel</h3>
                 <p style={{fontSize: "13px", color: "var(--text-secondary)", marginBottom: "20px", lineHeight: 1.5}}>
                   Link your Instagram creator account to unlock the Rule-Based Analytics Engine, Hook Database audits, and AI-driven content generation strategy.
                 </p>
+
+                {igError && (
+                  <div style={{ background: "#fdf2f2", color: "#e02424", padding: "10px 14px", borderRadius: "8px", fontSize: "12px", marginBottom: "14px", border: "1px solid #fbd5d5", textAlign: "left" }} data-test-id="ig-dashboard-error">
+                    ⚠️ {igError}
+                    <button onClick={handleInstagramConnectClick} style={{ ...S.btn("#e02424"), marginTop: "8px", minHeight: "36px", fontSize: "11px" }}>
+                      🔄 Retry Connection
+                    </button>
+                  </div>
+                )}
+
                 <div style={{display: "flex", flexDirection: "column", gap: "12px", alignItems: "stretch"}}>
-                  <input
-                    type="password"
-                    value={igAccessToken}
-                    onChange={(e) => setIgAccessToken(e.target.value)}
-                    style={{...S.input, padding: "12px 14px", textAlign: "center"}}
-                    placeholder="Paste your Meta User Access Token (EAAN...) here"
-                  />
-                  <button
-                    onClick={handleConnectInstagram}
-                    disabled={igLoading || !igAccessToken.trim()}
-                    style={{...S.btn("var(--accent-color)", false), minHeight: "44px", width: "100%", fontWeight: 600}}
-                  >
-                    {igLoading ? "Connecting Channel..." : "Link Instagram Account"}
-                  </button>
-                  {igError && (
-                    <p style={{color: "#e02424", fontSize: "12px", marginTop: "4px"}}>{igError}</p>
+                  {import.meta.env.DEV ? (
+                    <>
+                      <input
+                        type="password"
+                        value={igAccessToken}
+                        onChange={(e) => setIgAccessToken(e.target.value)}
+                        style={{...S.input, padding: "12px 14px", textAlign: "center"}}
+                        placeholder="[DEV ONLY] Paste Meta User Access Token (EAAN...) here"
+                      />
+                      <button
+                        onClick={handleConnectInstagram}
+                        disabled={igLoading || !igAccessToken.trim()}
+                        style={{...S.btn("var(--accent-color)", false), minHeight: "44px", width: "100%", fontWeight: 600}}
+                      >
+                        {igLoading ? "Connecting Channel..." : "Link Instagram Account (Manual)"}
+                      </button>
+                      <div style={{ textAlign: "center", margin: "4px 0" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>— OR USE OAUTH —</span>
+                      </div>
+                      <button
+                        onClick={handleInstagramConnectClick}
+                        disabled={igLoading}
+                        style={{...S.btn("var(--accent-color)", false), minHeight: "44px", width: "100%", fontWeight: 600}}
+                        data-test-id="ig-dashboard-connect-btn"
+                      >
+                        🔌 Connect Instagram (OAuth)
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleInstagramConnectClick}
+                      disabled={igLoading}
+                      style={{...S.btn("var(--accent-color)", false), minHeight: "44px", width: "100%", fontWeight: 600}}
+                      data-test-id="ig-dashboard-connect-btn"
+                    >
+                      🔌 Connect Instagram
+                    </button>
                   )}
                 </div>
               </div>
@@ -4656,7 +4722,13 @@ export default function App(){
                 }}>
                   <div>
                     <h3 style={{fontSize: 16, fontWeight: 600, margin: 0}}>📸 @{user.instagramUsername} Creator Dashboard</h3>
-                    <p style={{fontSize: 11, color: "var(--text-muted)", margin: "4px 0 0"}}>Linked on {user.instagramConnectedAt ? new Date(user.instagramConnectedAt).toLocaleDateString() : "recent"}</p>
+                    <div style={{ display: "flex", gap: "12px", marginTop: "4px", fontSize: "11px", color: "var(--text-muted)" }}>
+                      <span>Creator Account</span>
+                      <span>•</span>
+                      <span>{igMedia ? igMedia.length : 0} Posts</span>
+                      <span>•</span>
+                      <span>Linked on {user.instagramConnectedAt ? new Date(user.instagramConnectedAt).toLocaleDateString() : "recent"}</span>
+                    </div>
                   </div>
                   <div style={{display: "flex", gap: 8}}>
                     <button 
@@ -5154,23 +5226,55 @@ export default function App(){
               <h3 style={{ fontSize: 16, fontWeight: 500, color: "var(--text-primary)", marginBottom: 16 }}>Connected Accounts</h3>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
                 {/* Instagram Connection Card */}
-                <InstagramConnectionCard
-                  connected={!!user?.instagramUsername}
-                  profile={user?.instagramUsername ? {
-                    username: user.instagramUsername,
-                    mediaCount: igMedia ? igMedia.length : 0,
-                    avatarUrl: null
-                  } : null}
-                  lastSync={getFriendlyLastSync()}
-                  loading={igLoading}
-                  error={igError}
-                  syncing={syncingState}
-                  syncStep={syncStep}
-                  onConnect={handleInstagramConnectClick}
-                  onSync={handleSyncInstagram}
-                  onDisconnect={handleInstagramDisconnectClick}
-                  onViewIntelligence={() => setTab("instagram")}
-                />
+                <div>
+                  <InstagramConnectionCard
+                    connected={!!user?.instagramUsername}
+                    profile={user?.instagramUsername ? {
+                      username: user.instagramUsername,
+                      mediaCount: igMedia ? igMedia.length : 0,
+                      avatarUrl: null
+                    } : null}
+                    lastSync={getFriendlyLastSync()}
+                    loading={igLoading}
+                    error={igError}
+                    syncing={syncingState}
+                    syncStep={syncStep}
+                    onConnect={handleInstagramConnectClick}
+                    onSync={handleSyncInstagram}
+                    onDisconnect={handleInstagramDisconnectClick}
+                    onViewIntelligence={() => setTab("instagram")}
+                  />
+                  {!user?.instagramUsername && import.meta.env.DEV && (
+                    <div style={{
+                      marginTop: "12px",
+                      background: "var(--bg-secondary)",
+                      borderRadius: "16px",
+                      border: "1px dashed var(--border-color)",
+                      padding: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px"
+                    }}>
+                      <div style={{ fontSize: "11px", fontWeight: "600", color: "var(--text-muted)" }}>[DEV ONLY] MANUAL INSTAGRAM CONNECTION</div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <input
+                          type="password"
+                          value={igAccessToken}
+                          onChange={(e) => setIgAccessToken(e.target.value)}
+                          style={{ ...S.input, flex: 1, padding: "8px 12px", fontSize: "12px" }}
+                          placeholder="Paste Meta User Access Token (EAAN...) here"
+                        />
+                        <button
+                          onClick={handleConnectInstagram}
+                          disabled={igLoading || !igAccessToken.trim()}
+                          style={{ ...S.btn("var(--accent-color)", true), padding: "8px 16px", fontSize: "12px", height: "auto", minHeight: "auto", whiteSpace: "nowrap" }}
+                        >
+                          {igLoading ? "..." : "Link Manual"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 
                 {/* Future Connected Accounts Placeholders */}
                 <div style={{
