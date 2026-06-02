@@ -394,7 +394,7 @@ button[style*="--btn-hover-bg"]:hover {
   color: #F13E93 !important;
 }
 .tab-navigation-bar button.active,
-.tab-navigation-bar button[data-testid="creator-dna-save" onClick={(isDirty && !saving) ? onClick : undefined} style={btnStyle} disabled={!isDirty || saving}>d var(--border-focus)"] {
+.tab-navigation-bar button[style*="border-bottom: 2px solid var(--border-focus)"] {
   background-color: #F13E93 !important;
   color: #FFFFFF !important;
   font-weight: 600 !important;

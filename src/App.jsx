@@ -2473,6 +2473,25 @@ export default function App(){
     label:{fontSize:12,color:"var(--text-muted)",letterSpacing:0.4,marginBottom:4,display:"block"},
     input:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",boxSizing:"border-box"},
     textarea:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",resize:"vertical",minHeight:80,boxSizing:"border-box"},
+    wizardOption:(selected, isList=false)=>({
+      width: "100%",
+      padding: isList ? "12px 18px" : "10px 14px",
+      borderRadius: "12px",
+      minHeight: 44,
+      cursor: "pointer",
+      fontFamily: "inherit",
+      fontSize: 12,
+      transition: "all var(--transition-fast)",
+      display: isList ? "flex" : "inline-flex",
+      alignItems: isList ? "flex-start" : "center",
+      justifyContent: isList ? "flex-start" : "center",
+      textAlign: "left",
+      boxSizing: "border-box",
+      background: selected ? "rgba(241, 62, 147, 0.08)" : "#FFFFFF",
+      color: selected ? "#D01E73" : "#5A5A5A",
+      border: selected ? "1px solid #F13E93" : "1px solid var(--border-color)",
+      fontWeight: selected ? 600 : 400
+    }),
     btn:(color="var(--accent-color)",sm=false)=>{
       const isPrimary = color === "var(--accent-color)" || color === "#F13E93";
       const isSecondary = color === "var(--accent-light)" || color === "#F9D0CD" || color === "secondary";
