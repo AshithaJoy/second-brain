@@ -31,8 +31,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
-    if (status === 401 || status === 403) {
-      console.warn("[Axios Interceptor] Unauthorized request detected. Forcing logout.");
+    const url = error.config?.url || "";
+    if ((status === 401 || status === 403) && !url.includes("/instagram")) {
+      console.warn("[Axios Interceptor] Centralized session expiration. Forcing logout.");
       useAuthStore.getState().logout();
     }
     const message = error.response?.data?.message || error.response?.data?.error || error.message || "An error occurred";

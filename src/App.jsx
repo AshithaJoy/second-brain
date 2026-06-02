@@ -62,6 +62,7 @@ import {
   getProfileCompletionStatus as apiGetProfileCompletionStatus
 } from "./api/profile.api";
 import InstagramConnectionCard from "./components/InstagramConnectionCard";
+import SelectableChip from "./components/SelectableChip";
 
 
 
@@ -315,13 +316,16 @@ function MoodPicker({value,onChange,moods=MOODS}){
   return(
     <div style={{display:"flex",flexWrap:"wrap",gap:6,margin:"6px 0"}}>
       {moods.map(m=>(
-        <button key={m} onClick={()=>onChange(m===value?"":m)} style={{
-          padding:"4px 13px",borderRadius:20,fontSize:12,cursor:"pointer",fontFamily:"inherit",
-          border:value===m?`1.5px solid ${MOOD_COLORS[m]||"#c9b99a"}`:"1px solid var(--border-color)",
-          background:value===m?(MOOD_COLORS[m]||"#c9b99a")+"22":"transparent",
-          color:value===m?(MOOD_COLORS[m]||"#c9b99a"):"var(--text-secondary)",
-          fontWeight:value===m?600:400,transition:"all 0.18s",
-        }}>{m}</button>
+        <SelectableChip 
+          key={m} 
+          selected={value===m} 
+          onClick={()=>onChange(m===value?"":m)}
+          variant="semantic"
+          mood={m}
+          data-testid={`mood-chip-${m}`}
+        >
+          {m}
+        </SelectableChip>
       ))}
     </div>
   );
@@ -341,12 +345,15 @@ function ChipSelect({label,options,value,onChange}){
       <span style={{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4}}>{label}</span>
       <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
         {options.map(o=>(
-          <button key={o} onClick={()=>onChange(value===o?"":o)} style={{
-            padding:"3px 11px",borderRadius:20,fontSize:11,cursor:"pointer",fontFamily:"inherit",
-            border:value===o?"1.5px solid var(--border-focus)":"1px solid var(--border-color)",
-            background:value===o?"var(--accent-light)":"transparent",
-            color:value===o?"var(--text-primary)":"var(--text-muted)",transition:"all 0.15s",
-          }}>{o}</button>
+          <SelectableChip 
+            key={o} 
+            selected={value===o} 
+            onClick={()=>onChange(value===o?"":o)}
+            variant="filter"
+            data-testid={`filter-chip-${o.toLowerCase()}`}
+          >
+            {o}
+          </SelectableChip>
         ))}
       </div>
     </div>
@@ -3897,10 +3904,16 @@ export default function App(){
               <span style={S.label}>shoot status</span>
               <div style={{display:"flex",gap:4,marginBottom:14}}>
                 {["upcoming","week","month"].map(f=>(
-                  <button key={f} onClick={()=>setShootFilter(f)} style={{
-                    flex:1,padding:"5px",fontSize:11,borderRadius:10,border:`1px solid ${shootFilter===f?"var(--border-focus)":"var(--border-color)"}`,
-                    background:shootFilter===f?"var(--accent-light)":"transparent",color:shootFilter===f?"var(--text-primary)":"var(--text-muted)",cursor:"pointer"
-                  }}>{f}</button>
+                  <SelectableChip
+                    key={f}
+                    selected={shootFilter===f}
+                    onClick={()=>setShootFilter(f)}
+                    variant="filter"
+                    style={{ flex: 1 }}
+                    data-testid={`shoot-filter-${f}`}
+                  >
+                    {f}
+                  </SelectableChip>
                 ))}
               </div>
               <span style={S.label}>sessions</span>
@@ -5140,15 +5153,24 @@ export default function App(){
                   {/* Step 1: Primary Niche */}
                   <div>
                     <span style={S.label}>Primary Niche</span>
-                    <select value={wizardForm.primaryNiche} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, primaryNiche: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n => {
+                        const active = wizardForm.primaryNiche === n;
+                        return (
+                          <SelectableChip
+                            key={n}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, primaryNiche: n };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {n}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Step 2: Secondary Niches */}
@@ -5158,12 +5180,13 @@ export default function App(){
                       {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n => {
                         const active = wizardForm.secondaryNiches.includes(n);
                         return (
-                          <button key={n} onClick={() => toggleSecondaryNiche(n)} style={{
-                            ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
-                            background: active ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                            minHeight: 44,
-                            padding: "8px 16px"
-                          }}>{n}</button>
+                          <SelectableChip
+                            key={n}
+                            selected={active}
+                            onClick={() => toggleSecondaryNiche(n)}
+                          >
+                            {n}
+                          </SelectableChip>
                         );
                       })}
                     </div>
@@ -5172,57 +5195,93 @@ export default function App(){
                   {/* Step 3: Goal */}
                   <div>
                     <span style={S.label}>Primary Goal</span>
-                    <select value={wizardForm.primaryGoal} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, primaryGoal: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["Grow Followers", "Build Personal Brand", "Generate Leads", "Get Brand Deals", "Sell Products", "Sell Services", "Become Full-Time Creator", "Build Community"].map(g=>(
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Grow Followers", "Build Personal Brand", "Generate Leads", "Get Brand Deals", "Sell Products", "Sell Services", "Become Full-Time Creator", "Build Community"].map(g => {
+                        const active = wizardForm.primaryGoal === g;
+                        return (
+                          <SelectableChip
+                            key={g}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, primaryGoal: g };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {g}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Step 4: Audience Size */}
                   <div>
                     <span style={S.label}>Audience Size</span>
-                    <select value={wizardForm.audienceSize} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, audienceSize: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["0–1k", "1k–10k", "10k–50k", "50k–100k", "100k+"].map(a=>(
-                        <option key={a} value={a}>{a}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["0–1k", "1k–10k", "10k–50k", "50k–100k", "100k+"].map(a => {
+                        const active = wizardForm.audienceSize === a;
+                        return (
+                          <SelectableChip
+                            key={a}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, audienceSize: a };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {a}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Step 5: Creator Stage */}
                   <div>
                     <span style={S.label}>Creator Stage</span>
-                    <select value={wizardForm.creatorStage} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, creatorStage: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["Just Starting", "Growing Creator", "Established Creator", "Full-Time Creator", "Agency / Team"].map(s=>(
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Just Starting", "Growing Creator", "Established Creator", "Full-Time Creator", "Agency / Team"].map(s => {
+                        const active = wizardForm.creatorStage === s;
+                        return (
+                          <SelectableChip
+                            key={s}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, creatorStage: s };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {s}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Step 6: Posting Frequency */}
                   <div>
                     <span style={S.label}>Posting Frequency</span>
-                    <select value={wizardForm.postingFrequency} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, postingFrequency: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["Daily", "5x Weekly", "3x Weekly", "Weekly", "Custom"].map(f=>(
-                        <option key={f} value={f}>{f}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Daily", "5x Weekly", "3x Weekly", "Weekly", "Custom"].map(f => {
+                        const active = wizardForm.postingFrequency === f;
+                        return (
+                          <SelectableChip
+                            key={f}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, postingFrequency: f };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {f}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Step 7: Preferred Formats */}
@@ -5232,12 +5291,13 @@ export default function App(){
                       {["Reels", "Carousels", "Stories", "Long-form Videos", "Mixed"].map(f => {
                         const active = wizardForm.preferredFormats.includes(f);
                         return (
-                          <button key={f} onClick={() => togglePreferredFormat(f)} style={{
-                            ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
-                            background: active ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                            minHeight: 44,
-                            padding: "8px 16px"
-                          }}>{f}</button>
+                          <SelectableChip
+                            key={f}
+                            selected={active}
+                            onClick={() => togglePreferredFormat(f)}
+                          >
+                            {f}
+                          </SelectableChip>
                         );
                       })}
                     </div>
@@ -5250,12 +5310,13 @@ export default function App(){
                       {["Education", "Tutorials", "Behind The Scenes", "Personal Stories", "Case Studies", "Industry News", "Motivation", "Product Reviews", "Opinions", "Lifestyle"].map(p => {
                         const active = wizardForm.contentPillars.includes(p);
                         return (
-                          <button key={p} onClick={() => toggleContentPillar(p)} style={{
-                            ...S.btn(active ? "var(--accent-color)" : "var(--border-color)", true),
-                            background: active ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                            minHeight: 44,
-                            padding: "8px 16px"
-                          }}>{p}</button>
+                          <SelectableChip
+                            key={p}
+                            selected={active}
+                            onClick={() => toggleContentPillar(p)}
+                          >
+                            {p}
+                          </SelectableChip>
                         );
                       })}
                     </div>
@@ -5264,43 +5325,70 @@ export default function App(){
                   {/* Step 9: Tone of Voice */}
                   <div>
                     <span style={S.label}>Tone of Voice</span>
-                    <select value={wizardForm.toneOfVoice} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, toneOfVoice: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["Professional", "Educational", "Friendly", "Humorous", "Bold", "Luxury", "Minimalist", "Inspirational"].map(t=>(
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Professional", "Educational", "Friendly", "Humorous", "Bold", "Luxury", "Minimalist", "Inspirational"].map(t => {
+                        const active = wizardForm.toneOfVoice === t;
+                        return (
+                          <SelectableChip
+                            key={t}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, toneOfVoice: t };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {t}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Step 10: Biggest Challenge */}
                   <div>
                     <span style={S.label}>Biggest Challenge</span>
-                    <select value={wizardForm.biggestChallenge} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, biggestChallenge: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["Running Out Of Ideas", "Consistency", "Hooks", "Editing", "Planning", "Growth", "Brand Deals", "Monetization"].map(c=>(
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Running Out Of Ideas", "Consistency", "Hooks", "Editing", "Planning", "Growth", "Brand Deals", "Monetization"].map(c => {
+                        const active = wizardForm.biggestChallenge === c;
+                        return (
+                          <SelectableChip
+                            key={c}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, biggestChallenge: c };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {c}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Step 11: AI Assistance Level */}
                   <div>
                     <span style={S.label}>AI Assistance Level</span>
-                    <select value={wizardForm.aiAssistanceLevel} style={{...S.input, minHeight: 44}} onChange={e=>{
-                      const updated = { ...wizardForm, aiAssistanceLevel: e.target.value };
-                      setWizardForm(updated);
-                      handleSaveWizardProgress(updated);
-                    }}>
-                      {["Minimal", "Balanced", "Aggressive"].map(l=>(
-                        <option key={l} value={l}>{l}</option>
-                      ))}
-                    </select>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                      {["Minimal", "Balanced", "Aggressive"].map(l => {
+                        const active = wizardForm.aiAssistanceLevel === l;
+                        return (
+                          <SelectableChip
+                            key={l}
+                            selected={active}
+                            onClick={() => {
+                              const updated = { ...wizardForm, aiAssistanceLevel: l };
+                              setWizardForm(updated);
+                              handleSaveWizardProgress(updated);
+                            }}
+                          >
+                            {l}
+                          </SelectableChip>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <button 
@@ -5492,9 +5580,28 @@ export default function App(){
             </div>
             <div style={S.grid2}>
               <div><span style={S.label}>date</span><input type="date" value={localPost.date||""} style={S.input} onChange={e=>{ setLocalPost(prev=>({...prev,date:e.target.value})); setPostIsDirty(true); }}/></div>
-              <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=><button key={t} onClick={()=>{ setLocalPost(prev=>({...prev,type:t})); setPostIsDirty(true); }} style={{...S.btn(localPost.type===t?"var(--accent-color)":"var(--border-color)",true),background:localPost.type===t?"var(--accent-light)":"transparent"}}>{TYPE_ICONS[t]} {t}</button>)}</div></div>
+              <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=>(
+                <SelectableChip
+                  key={t}
+                  selected={localPost.type===t}
+                  onClick={()=>{ setLocalPost(prev=>({...prev,type:t})); setPostIsDirty(true); }}
+                  icon={TYPE_ICONS[t]}
+                  data-testid={`post-type-chip-${t}`}
+                >
+                  {t}
+                </SelectableChip>
+              ))}</div></div>
             </div>
-            <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=><button key={st} onClick={()=>{ setLocalPost(prev=>({...prev,status:st})); setPostIsDirty(true); }} style={{...S.btn(STATUS_COLORS[st],true),background:localPost.status===st?STATUS_COLORS[st]+"20":"transparent"}}>{st==="posted"?"released ✦":st==="archived"?"archived":st}</button>)}</div></div>
+            <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=>(
+              <SelectableChip
+                key={st}
+                selected={localPost.status===st}
+                onClick={()=>{ setLocalPost(prev=>({...prev,status:st})); setPostIsDirty(true); }}
+                data-testid={`post-status-chip-${st}`}
+              >
+                {st==="posted"?"released ✦":st==="archived"?"archived":st}
+              </SelectableChip>
+            ))}</div></div>
             <div style={{marginTop:12}}><span style={S.label}>mood</span><MoodPicker value={localPost.mood} onChange={m=>{ setLocalPost(prev=>({...prev,mood:m})); setPostIsDirty(true); }}/></div>
             <div style={{marginTop:12}}><span style={S.label}>linked shoot</span>
               <div style={S.row}>
@@ -5944,18 +6051,18 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What type of creator are you? (Primary Niche)</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
                     {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
-                      <button data-testid="creator-dna-primary-niche"
+                      <SelectableChip data-testid="creator-dna-primary-niche"
                         key={n} 
+                        selected={wizardForm.primaryNiche === n}
                         onClick={async () => {
                           const updated = { ...wizardForm, primaryNiche: n };
                           setWizardForm(updated);
                           await handleSaveWizardProgress(updated);
                           setWizardStep(2);
                         }} 
-                        style={S.wizardOption(wizardForm.primaryNiche === n)}
                       >
                         {n}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -5966,13 +6073,13 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>Select any secondary niches that apply:</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
                     {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
-                      <button data-testid="creator-dna-secondary-chip"
+                      <SelectableChip data-testid="creator-dna-secondary-chip"
                         key={n} 
+                        selected={wizardForm.secondaryNiches.includes(n)}
                         onClick={() => toggleSecondaryNiche(n)} 
-                        style={S.wizardOption(wizardForm.secondaryNiches.includes(n))}
                       >
                         {n}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -5983,18 +6090,19 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What are you trying to achieve? (Primary Goal)</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Grow Followers", "Build Personal Brand", "Generate Leads", "Get Brand Deals", "Sell Products", "Sell Services", "Become Full-Time Creator", "Build Community"].map(g=>(
-                      <button 
+                      <SelectableChip 
                         key={g} 
+                        selected={wizardForm.primaryGoal === g}
                         onClick={async () => {
                           const updated = { ...wizardForm, primaryGoal: g };
                           setWizardForm(updated);
                           await handleSaveWizardProgress(updated);
                           setWizardStep(4);
                         }} 
-                        style={S.wizardOption(wizardForm.primaryGoal === g, true)}
+                        style={{ width: "100%", justifyContent: "flex-start" }}
                       >
                         {g}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6005,18 +6113,19 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>How large is your audience today?</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["0–1k", "1k–10k", "10k–50k", "50k–100k", "100k+"].map(a=>(
-                      <button data-testid="creator-dna-step"
+                      <SelectableChip data-testid="creator-dna-step"
                         key={a} 
+                        selected={wizardForm.audienceSize === a}
                         onClick={async () => {
                           const updated = { ...wizardForm, audienceSize: a };
                           setWizardForm(updated);
                           await handleSaveWizardProgress(updated);
                           setWizardStep(5);
                         }} 
-                        style={S.wizardOption(wizardForm.audienceSize === a, true)}
+                        style={{ width: "100%", justifyContent: "flex-start" }}
                       >
                         {a}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6027,18 +6136,19 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What stage are you currently in?</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Just Starting", "Growing Creator", "Established Creator", "Full-Time Creator", "Agency / Team"].map(s=>(
-                      <button 
+                      <SelectableChip 
                         key={s} 
+                        selected={wizardForm.creatorStage === s}
                         onClick={async () => {
                           const updated = { ...wizardForm, creatorStage: s };
                           setWizardForm(updated);
                           await handleSaveWizardProgress(updated);
                           setWizardStep(6);
                         }} 
-                        style={S.wizardOption(wizardForm.creatorStage === s, true)}
+                        style={{ width: "100%", justifyContent: "flex-start" }}
                       >
                         {s}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6049,18 +6159,19 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>How often would you like to post?</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Daily", "5x Weekly", "3x Weekly", "Weekly", "Custom"].map(f=>(
-                      <button 
+                      <SelectableChip 
                         key={f} 
+                        selected={wizardForm.postingFrequency === f}
                         onClick={async () => {
                           const updated = { ...wizardForm, postingFrequency: f };
                           setWizardForm(updated);
                           await handleSaveWizardProgress(updated);
                           setWizardStep(7);
                         }} 
-                        style={S.wizardOption(wizardForm.postingFrequency === f, true)}
+                        style={{ width: "100%", justifyContent: "flex-start" }}
                       >
                         {f}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6071,13 +6182,14 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>Which content formats do you want to focus on? (Preferred Formats)</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Reels", "Carousels", "Stories", "Long-form Videos", "Mixed"].map(f=>(
-                      <button 
+                      <SelectableChip 
                         key={f} 
+                        selected={wizardForm.preferredFormats.includes(f)}
                         onClick={() => togglePreferredFormat(f)} 
-                        style={S.wizardOption(wizardForm.preferredFormats.includes(f), true)}
+                        style={{ width: "100%", justifyContent: "flex-start" }}
                       >
                         {f}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6088,13 +6200,13 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What topics do you create content about? (Content Pillars, max 5)</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
                     {["Education", "Tutorials", "Behind The Scenes", "Personal Stories", "Case Studies", "Industry News", "Motivation", "Product Reviews", "Opinions", "Lifestyle"].map(p=>(
-                      <button 
+                      <SelectableChip 
                         key={p} 
+                        selected={wizardForm.contentPillars.includes(p)}
                         onClick={() => toggleContentPillar(p)} 
-                        style={S.wizardOption(wizardForm.contentPillars.includes(p))}
                       >
                         {p}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6105,18 +6217,18 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>How do you want your content to sound? (Tone of Voice)</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
                     {["Professional", "Educational", "Friendly", "Humorous", "Bold", "Luxury", "Minimalist", "Inspirational"].map(t=>(
-                      <button 
+                      <SelectableChip 
                         key={t} 
+                        selected={wizardForm.toneOfVoice === t}
                         onClick={async () => {
                           const updated = { ...wizardForm, toneOfVoice: t };
                           setWizardForm(updated);
                           await handleSaveWizardProgress(updated);
                           setWizardStep(10);
                         }} 
-                        style={S.wizardOption(wizardForm.toneOfVoice === t)}
                       >
                         {t}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6127,18 +6239,18 @@ export default function App(){
                   <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What is your biggest struggle right now?</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
                     {["Running Out Of Ideas", "Consistency", "Hooks", "Editing", "Planning", "Growth", "Brand Deals", "Monetization"].map(c=>(
-                      <button 
+                      <SelectableChip 
                         key={c} 
+                        selected={wizardForm.biggestChallenge === c}
                         onClick={async () => {
                           const updated = { ...wizardForm, biggestChallenge: c };
                           setWizardForm(updated);
                           await handleSaveWizardProgress(updated);
                           setWizardStep(11);
                         }} 
-                        style={S.wizardOption(wizardForm.biggestChallenge === c)}
                       >
                         {c}
-                      </button>
+                      </SelectableChip>
                     ))}
                   </div>
                 </div>
@@ -6155,8 +6267,9 @@ export default function App(){
                     ].map(l => {
                       const isSelected = wizardForm.aiAssistanceLevel === l.key;
                       return (
-                        <button 
+                        <SelectableChip 
                           key={l.key} 
+                          selected={isSelected}
                           onClick={async () => {
                             const updated = { ...wizardForm, aiAssistanceLevel: l.key };
                             setWizardForm(updated);
@@ -6167,16 +6280,17 @@ export default function App(){
                             showToast("🎉 Creator DNA onboarding completed!");
                           }} 
                           style={{
-                            ...S.wizardOption(isSelected, true),
                             minHeight: 54,
                             display: "flex",
                             flexDirection: "column",
-                            gap: 4
+                            gap: 4,
+                            alignItems: "flex-start",
+                            width: "100%"
                           }}
                         >
-                          <strong style={{fontSize: 13, color: isSelected ? "#D01E73" : "var(--text-primary)"}}>{l.key} Assistance</strong>
-                          <span style={{fontSize: 11, color: isSelected ? "#8C2053" : "var(--text-muted)"}}>{l.desc}</span>
-                        </button>
+                          <strong style={{fontSize: 13, color: isSelected ? "#FFFFFF" : "var(--text-primary)"}}>{l.key} Assistance</strong>
+                          <span style={{fontSize: 11, color: isSelected ? "rgba(255,255,255,0.8)" : "var(--text-muted)"}}>{l.desc}</span>
+                        </SelectableChip>
                       );
                     })}
                   </div>
