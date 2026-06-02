@@ -460,6 +460,25 @@ function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery,showToa
     textarea:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",resize:"vertical",minHeight:70,boxSizing:"border-box"},
     label:{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4},
     card:{background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)",padding:"18px",marginBottom:12},
+    wizardOption:(selected, isList=false)=>({
+      width: "100%",
+      padding: isList ? "12px 18px" : "10px 14px",
+      borderRadius: "12px",
+      minHeight: 44,
+      cursor: "pointer",
+      fontFamily: "inherit",
+      fontSize: 12,
+      transition: "all var(--transition-fast)",
+      display: isList ? "flex" : "inline-flex",
+      alignItems: isList ? "flex-start" : "center",
+      justifyContent: isList ? "flex-start" : "center",
+      textAlign: "left",
+      boxSizing: "border-box",
+      background: selected ? "rgba(241, 62, 147, 0.08)" : "#FFFFFF",
+      color: selected ? "#D01E73" : "#5A5A5A",
+      border: selected ? "1px solid #F13E93" : "1px solid var(--border-color)",
+      fontWeight: selected ? 600 : 400
+    }),
     btn:(color="var(--accent-color)",sm=false)=>{
       const isPrimary = color === "var(--accent-color)" || color === "#F13E93";
       const isSecondary = color === "var(--accent-light)" || color === "#F9D0CD" || color === "secondary";
@@ -3297,7 +3316,7 @@ export default function App(){
               );
 
   return(
-    <div className="main-app-content" style={{background:"var(--bg-primary)",minHeight:"100vh",color:"var(--text-primary)",transition:"all 0.3s"}}>
+    <div className="main-app-content" data-test-id="workspace-dashboard" data-testid="workspace-dashboard" style={{background:"var(--bg-primary)",minHeight:"100vh",color:"var(--text-primary)",transition:"all 0.3s"}}>
       <style>{`
         button:hover { opacity: 0.78; }
         select { appearance: none; -webkit-appearance: none; }
@@ -5900,13 +5919,13 @@ export default function App(){
             </div>
 
             {/* Steps questions content */}
-            <div style={{minHeight: 180, marginBottom: 24}}>
+            <div style={{marginBottom: 20}}>
               {wizardStep === 1 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What type of creator are you? (Primary Niche)</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What type of creator are you? (Primary Niche)</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
                     {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
-                      <button 
+                      <button data-testid="creator-dna-primary-niche"
                         key={n} 
                         onClick={async () => {
                           const updated = { ...wizardForm, primaryNiche: n };
@@ -5914,13 +5933,7 @@ export default function App(){
                           await handleSaveWizardProgress(updated);
                           setWizardStep(2);
                         }} 
-                        style={{
-                          ...S.btn(wizardForm.primaryNiche === n ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.primaryNiche === n ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          padding: "10px 14px",
-                          fontWeight: wizardForm.primaryNiche === n ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.primaryNiche === n)}
                       >
                         {n}
                       </button>
@@ -5931,19 +5944,13 @@ export default function App(){
 
               {wizardStep === 2 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>Select any secondary niches that apply:</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>Select any secondary niches that apply:</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
                     {["Business", "Marketing", "Fitness", "Travel", "Lifestyle", "Fashion", "Food", "Tech", "Finance", "Education", "Gaming", "Creator Economy", "Other"].map(n=>(
-                      <button 
+                      <button data-testid="creator-dna-secondary-chip"
                         key={n} 
                         onClick={() => toggleSecondaryNiche(n)} 
-                        style={{
-                          ...S.btn(wizardForm.secondaryNiches.includes(n) ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.secondaryNiches.includes(n) ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          padding: "10px 14px",
-                          fontWeight: wizardForm.secondaryNiches.includes(n) ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.secondaryNiches.includes(n))}
                       >
                         {n}
                       </button>
@@ -5954,7 +5961,7 @@ export default function App(){
 
               {wizardStep === 3 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What are you trying to achieve? (Primary Goal)</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What are you trying to achieve? (Primary Goal)</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Grow Followers", "Build Personal Brand", "Generate Leads", "Get Brand Deals", "Sell Products", "Sell Services", "Become Full-Time Creator", "Build Community"].map(g=>(
                       <button 
@@ -5965,14 +5972,7 @@ export default function App(){
                           await handleSaveWizardProgress(updated);
                           setWizardStep(4);
                         }} 
-                        style={{
-                          ...S.btn(wizardForm.primaryGoal === g ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.primaryGoal === g ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          textAlign: "left",
-                          padding: "12px 18px",
-                          fontWeight: wizardForm.primaryGoal === g ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.primaryGoal === g, true)}
                       >
                         {g}
                       </button>
@@ -5983,10 +5983,10 @@ export default function App(){
 
               {wizardStep === 4 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How large is your audience today?</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>How large is your audience today?</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["0–1k", "1k–10k", "10k–50k", "50k–100k", "100k+"].map(a=>(
-                      <button 
+                      <button data-testid="creator-dna-step"
                         key={a} 
                         onClick={async () => {
                           const updated = { ...wizardForm, audienceSize: a };
@@ -5994,14 +5994,7 @@ export default function App(){
                           await handleSaveWizardProgress(updated);
                           setWizardStep(5);
                         }} 
-                        style={{
-                          ...S.btn(wizardForm.audienceSize === a ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.audienceSize === a ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          textAlign: "left",
-                          padding: "12px 18px",
-                          fontWeight: wizardForm.audienceSize === a ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.audienceSize === a, true)}
                       >
                         {a}
                       </button>
@@ -6012,7 +6005,7 @@ export default function App(){
 
               {wizardStep === 5 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What stage are you currently in?</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What stage are you currently in?</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Just Starting", "Growing Creator", "Established Creator", "Full-Time Creator", "Agency / Team"].map(s=>(
                       <button 
@@ -6023,14 +6016,7 @@ export default function App(){
                           await handleSaveWizardProgress(updated);
                           setWizardStep(6);
                         }} 
-                        style={{
-                          ...S.btn(wizardForm.creatorStage === s ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.creatorStage === s ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          textAlign: "left",
-                          padding: "12px 18px",
-                          fontWeight: wizardForm.creatorStage === s ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.creatorStage === s, true)}
                       >
                         {s}
                       </button>
@@ -6041,7 +6027,7 @@ export default function App(){
 
               {wizardStep === 6 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How often would you like to post?</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>How often would you like to post?</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Daily", "5x Weekly", "3x Weekly", "Weekly", "Custom"].map(f=>(
                       <button 
@@ -6052,14 +6038,7 @@ export default function App(){
                           await handleSaveWizardProgress(updated);
                           setWizardStep(7);
                         }} 
-                        style={{
-                          ...S.btn(wizardForm.postingFrequency === f ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.postingFrequency === f ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          textAlign: "left",
-                          padding: "12px 18px",
-                          fontWeight: wizardForm.postingFrequency === f ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.postingFrequency === f, true)}
                       >
                         {f}
                       </button>
@@ -6070,20 +6049,13 @@ export default function App(){
 
               {wizardStep === 7 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>Which content formats do you want to focus on? (Preferred Formats)</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>Which content formats do you want to focus on? (Preferred Formats)</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {["Reels", "Carousels", "Stories", "Long-form Videos", "Mixed"].map(f=>(
                       <button 
                         key={f} 
                         onClick={() => togglePreferredFormat(f)} 
-                        style={{
-                          ...S.btn(wizardForm.preferredFormats.includes(f) ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.preferredFormats.includes(f) ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          textAlign: "left",
-                          padding: "12px 18px",
-                          fontWeight: wizardForm.preferredFormats.includes(f) ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.preferredFormats.includes(f), true)}
                       >
                         {f}
                       </button>
@@ -6094,19 +6066,13 @@ export default function App(){
 
               {wizardStep === 8 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What topics do you create content about? (Content Pillars, max 5)</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What topics do you create content about? (Content Pillars, max 5)</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
                     {["Education", "Tutorials", "Behind The Scenes", "Personal Stories", "Case Studies", "Industry News", "Motivation", "Product Reviews", "Opinions", "Lifestyle"].map(p=>(
                       <button 
                         key={p} 
                         onClick={() => toggleContentPillar(p)} 
-                        style={{
-                          ...S.btn(wizardForm.contentPillars.includes(p) ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.contentPillars.includes(p) ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          padding: "10px 14px",
-                          fontWeight: wizardForm.contentPillars.includes(p) ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.contentPillars.includes(p))}
                       >
                         {p}
                       </button>
@@ -6117,7 +6083,7 @@ export default function App(){
 
               {wizardStep === 9 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How do you want your content to sound? (Tone of Voice)</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>How do you want your content to sound? (Tone of Voice)</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:8}}>
                     {["Professional", "Educational", "Friendly", "Humorous", "Bold", "Luxury", "Minimalist", "Inspirational"].map(t=>(
                       <button 
@@ -6128,13 +6094,7 @@ export default function App(){
                           await handleSaveWizardProgress(updated);
                           setWizardStep(10);
                         }} 
-                        style={{
-                          ...S.btn(wizardForm.toneOfVoice === t ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.toneOfVoice === t ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          padding: "10px 14px",
-                          fontWeight: wizardForm.toneOfVoice === t ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.toneOfVoice === t)}
                       >
                         {t}
                       </button>
@@ -6145,7 +6105,7 @@ export default function App(){
 
               {wizardStep === 10 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>What is your biggest struggle right now?</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>What is your biggest struggle right now?</h4>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:8}}>
                     {["Running Out Of Ideas", "Consistency", "Hooks", "Editing", "Planning", "Growth", "Brand Deals", "Monetization"].map(c=>(
                       <button 
@@ -6156,13 +6116,7 @@ export default function App(){
                           await handleSaveWizardProgress(updated);
                           setWizardStep(11);
                         }} 
-                        style={{
-                          ...S.btn(wizardForm.biggestChallenge === c ? "var(--accent-color)" : "var(--border-color)", true),
-                          background: wizardForm.biggestChallenge === c ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 44,
-                          padding: "10px 14px",
-                          fontWeight: wizardForm.biggestChallenge === c ? 600 : 400
-                        }}
+                        style={S.wizardOption(wizardForm.biggestChallenge === c)}
                       >
                         {c}
                       </button>
@@ -6173,39 +6127,39 @@ export default function App(){
 
               {wizardStep === 11 && (
                 <div>
-                  <h4 style={{fontSize:15,fontWeight:500,marginBottom:12}}>How much AI assistance would you like?</h4>
+                  <h4 style={{fontSize:15,fontWeight:500,color:"#555555",marginTop:0,marginBottom:12}}>How much AI assistance would you like?</h4>
                   <div style={{display:"flex",flexDirection:"column",gap:12}}>
                     {[
                       { key: "Minimal", desc: "Suggestions only — simple hints and ideas." },
                       { key: "Balanced", desc: "Suggestions + drafts — helper copy and complete draft captions." },
                       { key: "Aggressive", desc: "Full automation — complete content plans, full drafts, and advanced hooks." }
-                    ].map(l => (
-                      <button 
-                        key={l.key} 
-                        onClick={async () => {
-                          const updated = { ...wizardForm, aiAssistanceLevel: l.key };
-                          setWizardForm(updated);
-                          await handleSaveWizardProgress(updated);
-                          
-                          // Complete Onboarding!
-                          setShowWizard(false);
-                          showToast("🎉 Creator DNA onboarding completed!");
-                        }} 
-                        style={{
-                          ...S.btn(wizardForm.aiAssistanceLevel === l.key ? "var(--accent-color)" : "var(--border-color)", false),
-                          background: wizardForm.aiAssistanceLevel === l.key ? "rgba(241, 62, 147, 0.12)" : "transparent",
-                          minHeight: 54,
-                          textAlign: "left",
-                          padding: "12px 18px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4
-                        }}
-                      >
-                        <strong style={{fontSize: 13, color: "var(--text-primary)"}}>{l.key} Assistance</strong>
-                        <span style={{fontSize: 11, color: "var(--text-muted)"}}>{l.desc}</span>
-                      </button>
-                    ))}
+                    ].map(l => {
+                      const isSelected = wizardForm.aiAssistanceLevel === l.key;
+                      return (
+                        <button 
+                          key={l.key} 
+                          onClick={async () => {
+                            const updated = { ...wizardForm, aiAssistanceLevel: l.key };
+                            setWizardForm(updated);
+                            await handleSaveWizardProgress(updated);
+                            
+                            // Complete Onboarding!
+                            setShowWizard(false);
+                            showToast("🎉 Creator DNA onboarding completed!");
+                          }} 
+                          style={{
+                            ...S.wizardOption(isSelected, true),
+                            minHeight: 54,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4
+                          }}
+                        >
+                          <strong style={{fontSize: 13, color: isSelected ? "#D01E73" : "var(--text-primary)"}}>{l.key} Assistance</strong>
+                          <span style={{fontSize: 11, color: isSelected ? "#8C2053" : "var(--text-muted)"}}>{l.desc}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -6213,7 +6167,7 @@ export default function App(){
 
             {/* Navigation footer */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid var(--border-color)",paddingTop:16}}>
-              <button 
+              <button data-testid="creator-dna-back" 
                 disabled={wizardStep === 1}
                 onClick={() => setWizardStep(prev => prev - 1)}
                 style={{
@@ -6227,13 +6181,13 @@ export default function App(){
               </button>
               
               <div style={{display:"flex",gap:8}}>
-                <button 
+                <button data-test-id="creator-dna-skip" data-testid="creator-dna-skip" 
                   onClick={handleSkipWizard} 
                   style={{...S.btn("var(--text-muted)", true), minHeight: 44}}
                 >
-                  Skip
+                  Skip For Now
                 </button>
-                <button 
+                <button data-testid="creator-dna-next" 
                   disabled={wizardStep === 11}
                   onClick={() => setWizardStep(prev => prev + 1)}
                   style={{

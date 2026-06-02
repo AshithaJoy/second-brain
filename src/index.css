@@ -132,6 +132,10 @@ input:focus, textarea:focus, select:focus, button:focus {
   outline: none;
   box-shadow: 0 0 0 3px rgba(241, 62, 147, 0.15) !important;
 }
+:focus-visible {
+  outline: 3px solid #F13E93;
+  outline-offset: 2px;
+}
 
 input::placeholder, textarea::placeholder {
   color: #999999;
@@ -390,7 +394,7 @@ button[style*="--btn-hover-bg"]:hover {
   color: #F13E93 !important;
 }
 .tab-navigation-bar button.active,
-.tab-navigation-bar button[style*="border-bottom: 2px solid var(--border-focus)"] {
+.tab-navigation-bar button[data-testid="creator-dna-save" onClick={(isDirty && !saving) ? onClick : undefined} style={btnStyle} disabled={!isDirty || saving}>d var(--border-focus)"] {
   background-color: #F13E93 !important;
   color: #FFFFFF !important;
   font-weight: 600 !important;
@@ -455,6 +459,11 @@ button[style*="--btn-hover-bg"]:hover {
 }
 
 /* Onboarding Question Card */
+:focus-visible {
+  outline: 3px solid #F13E93;
+  outline-offset: 2px;
+}
+
 .wizard-question-card {
   background-color: #FFFFFF !important;
   border: 1px solid #F9D0CD !important;

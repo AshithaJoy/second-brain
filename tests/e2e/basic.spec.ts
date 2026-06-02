@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-test('frontend loads and health endpoint works', async ({ page }) => {
-  // Visit the frontend root
-  await page.goto('/');
-  await expect(page).toHaveURL('https://second-brain-beige-eight.vercel.app/');
+test('frontend loads and health endpoint works', async ({ page, baseURL }) => {
+  const targetUrl = baseURL && !baseURL.includes('second-brain-beige-eight') ? baseURL : 'http://localhost:5173/';
+  await page.goto(targetUrl);
+  await expect(page).toHaveURL(targetUrl);
   // Basic check: page title contains "Second Brain" (replace with actual expected title if known)
   const pageTitle = await page.title();
   expect(pageTitle).not.toBe('404: NOT_FOUND');

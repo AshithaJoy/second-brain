@@ -21,10 +21,10 @@ test.describe("Instagram Connection UI E2E Flow", () => {
     await page.click('[data-test-id="register-button"]');
 
     // Wait for dashboard dashboard to load
-    await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("workspace-dashboard")).toBeVisible({ timeout: 15000 });
 
     // Skip onboarding wizard
-    const skipBtn = page.locator("button:has-text('Skip For Now')");
+    const skipBtn = page.getByTestId("creator-dna-skip");
     await skipBtn.waitFor({ state: "visible", timeout: 15000 });
     await skipBtn.click();
     await expect(skipBtn).not.toBeVisible();

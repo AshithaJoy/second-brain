@@ -30,10 +30,10 @@ test.describe("InstaBrain QA Destruction E2E Test Suite", () => {
     // Click submit
     await page.click("button:has-text('Create Creator OS Profile')");
     // Verify we enter the workspace
-    await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("workspace-dashboard")).toBeVisible({ timeout: 15000 });
 
     // Skip onboarding wizard
-    const skipBtn = page.locator("button:has-text('Skip For Now')");
+    const skipBtn = page.getByTestId("creator-dna-skip");
     await skipBtn.waitFor({ state: "visible", timeout: 15000 });
     await skipBtn.click();
     await expect(skipBtn).not.toBeVisible();
@@ -78,10 +78,10 @@ test.describe("InstaBrain QA Destruction E2E Test Suite", () => {
     // Open a second page/tab in the same browser context
     const page2 = await context.newPage();
     await page2.goto("http://localhost:5173");
-    await expect(page2.locator("text=second brain ✦")).toBeVisible({ timeout: 10000 });
+    await expect(page2.getByTestId("workspace-dashboard")).toBeVisible({ timeout: 10000 });
 
     // Skip onboarding wizard on second tab if visible
-    const skipBtn2 = page2.locator("button:has-text('Skip For Now')");
+    const skipBtn2 = page2.getByTestId("creator-dna-skip");
     try {
       await skipBtn2.waitFor({ state: "visible", timeout: 1000 });
       await skipBtn2.click();
@@ -112,7 +112,7 @@ test.describe("InstaBrain QA Destruction E2E Test Suite", () => {
 
   test("3. Token Expiration Redirect Test", async ({ page }) => {
     // Make sure we are in the workspace
-    await expect(page.locator("text=second brain ✦")).toBeVisible();
+    await expect(page.getByTestId("workspace-dashboard")).toBeVisible();
 
     // Corrupt the token in localStorage
     await page.evaluate(() => {

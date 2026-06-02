@@ -30,10 +30,10 @@ test('Creator Journey Acceptance Test', async ({ page }) => {
   await page.click('[data-test-id="register-button"]');
   
   // Wait for the workspace dashboard to mount
-  await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("workspace-dashboard")).toBeVisible({ timeout: 15000 });
 
   // Skip onboarding wizard
-  const skipBtn = page.locator("button:has-text('Skip For Now')");
+  const skipBtn = page.getByTestId("creator-dna-skip");
   await skipBtn.waitFor({ state: "visible", timeout: 15000 });
   await skipBtn.click();
   await expect(skipBtn).not.toBeVisible();
@@ -103,7 +103,7 @@ test('Creator Journey Acceptance Test', async ({ page }) => {
   await page.reload();
 
   // Wait for workspace to reload
-  await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("workspace-dashboard")).toBeVisible({ timeout: 15000 });
 
   // 8. Logout
   await page.click("button:has-text('logout')");
@@ -117,7 +117,7 @@ test('Creator Journey Acceptance Test', async ({ page }) => {
   await page.click('[data-test-id="login-button"]');
   
   // Wait for workspace
-  await expect(page.locator("text=second brain ✦")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("workspace-dashboard")).toBeVisible({ timeout: 15000 });
 
   // 10. Verify persisted items exist
   await page.waitForTimeout(1000);
