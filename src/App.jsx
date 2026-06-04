@@ -67,6 +67,17 @@ import CreatorIntelligenceDashboard from "./components/CreatorIntelligenceDashbo
 import { BRollVault } from "./components/broll/BRollVault";
 import { PostEditorModal } from "./components/planner/PostEditorModal";
 
+const generateUUID = () => {
+  if (typeof window !== "undefined" && window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -1229,7 +1240,7 @@ export default function App(){
     } catch (err) {
       console.error("Failed to save breakdown to server dump:", err);
       const nd = {
-        id: String(Date.now()),
+        id: generateUUID(),
         title,
         text,
         mood: "cinematic",
@@ -1268,7 +1279,7 @@ export default function App(){
     const eveningShots = [];
     reelBreakdown.steps.forEach((step, idx) => {
       const shotObj = {
-        id: Date.now() + idx,
+        id: generateUUID(),
         shot: step.replace(/^\d+\.\s*/, ""),
         loc: "Studio",
         mood: "cinematic",
@@ -1297,7 +1308,7 @@ export default function App(){
       setTab("shoot");
     } catch (err) {
       console.error("Failed to save shoot breakdown to server:", err);
-      const fallback = { ...nsData, id: String(Date.now()) };
+      const fallback = { ...nsData, id: generateUUID() };
       setShoots(ss => [...ss, fallback]);
       setSelectedShootId(fallback.id);
       setTab("shoot");
@@ -1455,7 +1466,7 @@ export default function App(){
       return nd;
     } catch (err) {
       console.error("Failed to create dump on server:", err);
-      const nd = { id: String(Date.now()), title, text: "", mood, ts: "just now", archived: false };
+      const nd = { id: generateUUID(), title, text: "", mood, ts: "just now", archived: false };
       setDumps(ds => [nd, ...ds]);
       setActiveDumpId(nd.id);
       return nd;
@@ -1478,7 +1489,7 @@ export default function App(){
       return np;
     } catch (err) {
       console.error("Failed to create post on server:", err);
-      const nd = { id: String(Date.now()), ...postData };
+      const nd = { id: generateUUID(), ...postData };
       setPosts(ps => [...ps, nd]);
       return nd;
     }
