@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import { apiBaseUrl } from "../api/axios";
+import { api } from "../api/axios";
 
 export function UnifiedMediaPicker({ onClose, onSelect }) {
   const [activeTab, setActiveTab] = useState("upload"); // upload, vault
@@ -25,10 +25,7 @@ export function UnifiedMediaPicker({ onClose, onSelect }) {
   const fetchVaultAssets = async () => {
     setIsLoadingVault(true);
     try {
-      const token = localStorage.getItem("sb-creator-token");
-      const res = await axios.get(`${apiBaseUrl}/broll`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get("/broll");
       // Sort by latest first
       const assets = res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setVaultAssets(assets);
@@ -59,12 +56,7 @@ export function UnifiedMediaPicker({ onClose, onSelect }) {
 
     try {
       // 1. Signature
-      const token = localStorage.getItem("sb-creator-token");
-      const sigResponse = await axios.post(
-        `${apiBaseUrl}/broll/upload-signature`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const sigResponse = await api.post("/broll/upload-signature");
       
       const { signature, timestamp, cloudName, apiKey } = sigResponse.data;
 
@@ -110,11 +102,7 @@ export function UnifiedMediaPicker({ onClose, onSelect }) {
         mimeType: file.type
       };
 
-      const createRes = await axios.post(
-        `${apiBaseUrl}/broll`,
-        brollData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const createRes = await api.post("/broll", brollData);
 
       // Return the generated asset
       onSelect(createRes.data);

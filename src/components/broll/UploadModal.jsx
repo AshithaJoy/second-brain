@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import axios from "axios";
-import { apiBaseUrl } from "../../api/axios";
+import { api } from "../../api/axios";
 
 export function UploadModal({ onClose, onUploadComplete }) {
   const [file, setFile] = useState(null);
@@ -30,13 +30,7 @@ export function UploadModal({ onClose, onUploadComplete }) {
 
     try {
       // 1. Get upload signature from our backend
-      // We use axios directly to hit our backend and then Cloudinary
-      const token = localStorage.getItem("sb-creator-token");
-      const sigResponse = await axios.post(
-        `${apiBaseUrl}/broll/upload-signature`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const sigResponse = await api.post("/broll/upload-signature");
       
       const { signature, timestamp, cloudName, apiKey } = sigResponse.data;
 
