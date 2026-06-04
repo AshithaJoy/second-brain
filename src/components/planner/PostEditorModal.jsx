@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuthStore } from "../../stores/auth.store";
-import { VaultPicker } from "./VaultPicker";
+import { UnifiedMediaPicker } from "../UnifiedMediaPicker";
 import { schedulePost } from "../../api/planner.api";
 
 const POST_TYPES = ["REEL", "IMAGE", "CAROUSEL", "STORY", "NOTE"];
@@ -22,7 +22,7 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
     publishAtDate: post?.publishAt ? new Date(post.publishAt).toISOString().split('T')[0] : "",
     publishAtTime: post?.publishAt ? new Date(post.publishAt).toTimeString().substring(0, 5) : ""
   });
-  const [showVaultPicker, setShowVaultPicker] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [schedulingError, setSchedulingError] = useState("");
 
   const updateForm = (patch) => setForm(f => ({ ...f, ...patch }));
@@ -41,18 +41,15 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
   const handleSchedule = async () => {
     setSchedulingError("");
     try {
-      // First save the current form so the backend has the publishAt and assets
       let publishAt = null;
       if (form.publishAtDate && form.publishAtTime) {
         publishAt = new Date(`${form.publishAtDate}T${form.publishAtTime}`).toISOString();
       }
-      // Assuming onSave returns a promise
       await onSave({ ...form, id: post?.id, publishAt });
       
-      // Then call the schedule API
       if (post?.id) {
         await schedulePost(post.id);
-        onClose(); // Close on success
+        onClose();
       }
     } catch (err) {
       setSchedulingError(err.response?.data?.error || err.message || "Failed to schedule");
@@ -61,10 +58,10 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
 
   const attachedBRolls = vault.filter(v => form.brollIds.includes(v.id));
   
-  // Validation calculations for the preview panel
+  // Readiness Checklist logic
   const isInstagramConnected = !!(user?.instagramUserId && user?.instagramConnectedAt);
-  const videoAssets = attachedBRolls.filter(b => b.format === "video").length;
-  const imageAssets = attachedBRolls.filter(b => b.format === "image").length;
+  const videoAssets = attachedBRolls.filter(b => b.format === "video" || b.clipType === "video").length;
+  const imageAssets = attachedBRolls.filter(b => b.format === "image" || b.clipType === "image").length;
   
   let assetsValid = false;
   if (form.type === "REEL" && videoAssets >= 1) assetsValid = true;
@@ -72,15 +69,39 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
   if (form.type === "STORY" && (videoAssets >= 1 || imageAssets >= 1)) assetsValid = true;
   if (form.type === "CAROUSEL" && attachedBRolls.length >= 2) assetsValid = true;
 
-  const hasPublishAt = !!(form.publishAtDate && form.publishAtTime);
-  let isPublishAtFuture = false;
-  if (hasPublishAt) {
-    const pDate = new Date(`${form.publishAtDate}T${form.publishAtTime}`);
-    isPublishAtFuture = pDate > new Date();
+  const isTypeValid = POST_TYPES.includes(form.type);
+  const hasCaption = form.caption.trim().length > 0;
+  const isApproved = form.status === "APPROVED" || form.status === "SCHEDULED" || form.status === "PUBLISHED" || form.status === "PUBLISHING";
+
+  // Calculate Health Score
+  let totalChecks = 5;
+  let passedChecks = 0;
+  if (assetsValid) passedChecks++;
+  if (hasCaption) passedChecks++;
+  if (isTypeValid) passedChecks++;
+  if (isInstagramConnected) passedChecks++;
+  if (isApproved) passedChecks++;
+
+  const healthScore = Math.round((passedChecks / totalChecks) * 100);
+  
+  let readinessState = "Missing Requirements";
+  let readinessColor = "#f88";
+  if (healthScore === 100) {
+    readinessState = "Ready To Schedule";
+    readinessColor = "var(--accent-color)";
+  } else if (healthScore >= 60) {
+    readinessState = "Needs Attention";
+    readinessColor = "orange";
+  } else {
+    readinessState = "Blocked";
   }
 
-  const isApproved = form.status === "APPROVED";
-  const isPublishingReady = isApproved && assetsValid && isInstagramConnected && isPublishAtFuture && form.type !== "NOTE";
+  const handleMediaSelect = (asset) => {
+    if (!form.brollIds.includes(asset.id)) {
+      updateForm({ brollIds: [...form.brollIds, asset.id] });
+    }
+    setShowMediaPicker(false);
+  };
 
   return (
     <div style={{
@@ -92,7 +113,7 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
     }}>
       <div style={{
         background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
-        borderRadius: 16, width: "100%", maxWidth: 800, maxHeight: "90vh",
+        borderRadius: 16, width: "100%", maxWidth: 900, maxHeight: "90vh",
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-lg)"
       }}>
@@ -136,13 +157,18 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
             </div>
 
             <div>
+              <span style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4, display: "block" }}>Caption</span>
+              <textarea value={form.caption} onChange={e => updateForm({ caption: e.target.value })} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", minHeight: 120 }} placeholder="Write your caption here..." />
+            </div>
+
+            <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: "600", color: "var(--text-primary)" }}>Attached Media Assets</span>
                 <button 
-                  onClick={() => setShowVaultPicker(true)}
+                  onClick={() => setShowMediaPicker(true)}
                   style={{ background: "var(--accent-color)", color: "#fff", border: "none", padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12 }}
                 >
-                  + Attach Assets
+                  + Attach Media
                 </button>
               </div>
               
@@ -162,7 +188,7 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
                 </div>
               ) : (
                 <div style={{ padding: 16, background: "var(--bg-primary)", border: "1px dashed var(--border-color)", borderRadius: 8, textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>
-                  No assets attached. Click to add from B-Roll Vault.
+                  No assets attached. Click to add from Device or Vault.
                 </div>
               )}
             </div>
@@ -179,42 +205,45 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
                   <input type="time" value={form.publishAtTime} onChange={e => updateForm({ publishAtTime: e.target.value })} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" }} />
                 </div>
               </div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
-                Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
-              </div>
             </div>
-
           </div>
 
-          <div style={{ width: 280, borderLeft: "1px solid var(--border-color)", padding: 24, display: "flex", flexDirection: "column", gap: 16, background: "var(--bg-primary)" }}>
-            <h4 style={{ margin: 0, fontSize: 14 }}>Instagram Publishing Preview</h4>
+          <div style={{ width: 320, borderLeft: "1px solid var(--border-color)", padding: 24, display: "flex", flexDirection: "column", gap: 16, background: "var(--bg-primary)" }}>
+            <h4 style={{ margin: 0, fontSize: 14 }}>Post Health & Readiness</h4>
             
-            <div style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 8, background: "var(--bg-secondary)", padding: 16, borderRadius: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Type:</span>
-                <span>{form.type}</span>
+            <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 12, background: "var(--bg-secondary)", padding: 16, borderRadius: 8 }}>
+              
+              {/* Health Score Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 8 }}>
+                <span style={{ fontWeight: "bold" }}>Health Score</span>
+                <span style={{ fontWeight: "bold", color: readinessColor, fontSize: 16 }}>{healthScore}%</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Status:</span>
-                <span style={{ color: form.status === "APPROVED" ? "var(--accent-color)" : "inherit" }}>{form.status}</span>
+              <div style={{ color: readinessColor, fontWeight: "bold", fontSize: 14 }}>
+                {readinessState}
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Assets:</span>
-                <span style={{ color: assetsValid ? "var(--accent-color)" : "#f88" }}>{attachedBRolls.length} ({videoAssets}V, {imageAssets}I)</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Instagram Connected:</span>
-                <span style={{ color: isInstagramConnected ? "var(--accent-color)" : "#f88" }}>{isInstagramConnected ? "Yes" : "No"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Scheduled Time:</span>
-                <span style={{ color: isPublishAtFuture ? "var(--accent-color)" : "#f88" }}>
-                  {hasPublishAt ? `${form.publishAtDate} ${form.publishAtTime}` : "Not set"}
-                </span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border-color)" }}>
-                <span style={{ color: "var(--text-muted)", fontWeight: "bold" }}>Publishing Ready:</span>
-                <span style={{ color: isPublishingReady ? "var(--accent-color)" : "#f88", fontWeight: "bold" }}>{isPublishingReady ? "Yes" : "No"}</span>
+
+              {/* Checklist */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: assetsValid ? "var(--accent-color)" : "#f88" }}>{assetsValid ? "✓" : "✗"}</span>
+                  <span style={{ color: assetsValid ? "var(--text-primary)" : "var(--text-muted)" }}>Media Attached</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: hasCaption ? "var(--accent-color)" : "#f88" }}>{hasCaption ? "✓" : "✗"}</span>
+                  <span style={{ color: hasCaption ? "var(--text-primary)" : "var(--text-muted)" }}>Caption Added</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: isTypeValid ? "var(--accent-color)" : "#f88" }}>{isTypeValid ? "✓" : "✗"}</span>
+                  <span style={{ color: isTypeValid ? "var(--text-primary)" : "var(--text-muted)" }}>Post Type Selected</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: isInstagramConnected ? "var(--accent-color)" : "#f88" }}>{isInstagramConnected ? "✓" : "✗"}</span>
+                  <span style={{ color: isInstagramConnected ? "var(--text-primary)" : "var(--text-muted)" }}>Instagram Connected</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: isApproved ? "var(--accent-color)" : "#f88" }}>{isApproved ? "✓" : "✗"}</span>
+                  <span style={{ color: isApproved ? "var(--text-primary)" : "var(--text-muted)" }}>Approved</span>
+                </div>
               </div>
             </div>
 
@@ -228,7 +257,7 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
 
         <div style={{ padding: 24, borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-             {isPublishingReady && post?.id && form.status === "APPROVED" && (
+             {healthScore === 100 && post?.id && (
               <button onClick={handleSchedule} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent-color)", color: "#fff", cursor: "pointer", fontWeight: "bold" }}>Schedule for Publishing</button>
              )}
           </div>
@@ -239,12 +268,10 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
         </div>
       </div>
 
-      {showVaultPicker && (
-        <VaultPicker 
-          vault={vault}
-          selectedIds={form.brollIds}
-          onSelect={(ids) => updateForm({ brollIds: ids })}
-          onClose={() => setShowVaultPicker(false)}
+      {showMediaPicker && (
+        <UnifiedMediaPicker 
+          onSelect={handleMediaSelect}
+          onClose={() => setShowMediaPicker(false)}
         />
       )}
     </div>
