@@ -33,7 +33,7 @@ export function UploadModal({ onClose, onUploadComplete }) {
       // We use axios directly to hit our backend and then Cloudinary
       const token = localStorage.getItem("sb-creator-token");
       const sigResponse = await axios.post(
-        `${apiBaseUrl}/api/broll/upload-signature`,
+        `${apiBaseUrl}/broll/upload-signature`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );

@@ -26,7 +26,7 @@ export function UnifiedMediaPicker({ onClose, onSelect }) {
     setIsLoadingVault(true);
     try {
       const token = localStorage.getItem("sb-creator-token");
-      const res = await axios.get(`${apiBaseUrl}/api/broll`, {
+      const res = await axios.get(`${apiBaseUrl}/broll`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // Sort by latest first
@@ -61,7 +61,7 @@ export function UnifiedMediaPicker({ onClose, onSelect }) {
       // 1. Signature
       const token = localStorage.getItem("sb-creator-token");
       const sigResponse = await axios.post(
-        `${apiBaseUrl}/api/broll/upload-signature`,
+        `${apiBaseUrl}/broll/upload-signature`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -111,7 +111,7 @@ export function UnifiedMediaPicker({ onClose, onSelect }) {
       };
 
       const createRes = await axios.post(
-        `${apiBaseUrl}/api/broll`,
+        `${apiBaseUrl}/broll`,
         brollData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
