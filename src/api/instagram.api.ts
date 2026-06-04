@@ -35,3 +35,17 @@ export async function getInstagramOAuthUrl(state: string) {
   return response.data;
 }
 
+export async function getInstagramHooks() {
+  const response = await api.get("/instagram/hooks");
+  return response.data;
+}
+
+export async function getInstagramOpportunities() {
+  const response = await api.get("/instagram/opportunities");
+  return response.data;
+}
+
+export async function analyzeInstagramMedia() {
+  const response = await api.post("/instagram/analyze");
+  return response.data;
+}

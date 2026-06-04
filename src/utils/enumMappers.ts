@@ -3,7 +3,7 @@ export function mapPostTypeToBackend(type: string): string {
 }
 
 export function mapPostTypeToFrontend(type: string): string {
-  return type.toLowerCase();
+  return type.toUpperCase();
 }
 
 export function mapPostStatusToBackend(status: string): string {
@@ -11,7 +11,7 @@ export function mapPostStatusToBackend(status: string): string {
 }
 
 export function mapPostStatusToFrontend(status: string): string {
-  return status.toLowerCase();
+  return status.toUpperCase();
 }
 
 export function mapCollabStatusToBackend(status: string): string {

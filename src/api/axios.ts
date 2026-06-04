@@ -3,6 +3,7 @@ import { useAuthStore } from "../stores/auth.store";
 import { getToken } from "../utils/auth.utils";
 
 const API_URL = `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api`;
+export const apiBaseUrl = API_URL;
 
 export const api = axios.create({
   baseURL: API_URL,

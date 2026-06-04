@@ -63,6 +63,9 @@ import {
 } from "./api/profile.api";
 import InstagramConnectionCard from "./components/InstagramConnectionCard";
 import SelectableChip from "./components/SelectableChip";
+import CreatorIntelligenceDashboard from "./components/CreatorIntelligenceDashboard";
+import { BRollVault } from "./components/broll/BRollVault";
+import { PostEditorModal } from "./components/planner/PostEditorModal";
 
 
 
@@ -87,8 +90,8 @@ const POST_TYPES   = ["reel","carousel","story","note"];
 const TYPE_ICONS   = {reel:"▶",carousel:"⊞",story:"◯",note:"✎"};
 const DAYS         = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS       = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const STATUS_COLORS= {draft:"#F9D0CD",scheduled:"#FAFFCB",posted:"#F891BB",archived:"#b8b8c8"};
-const STATUS_TEXT_COLORS = {draft:"#9C1D54",scheduled:"#706000",posted:"#F13E93",archived:"#736F6A"};
+const STATUS_COLORS= {DRAFT:"#F9D0CD",REVIEW:"#D0E5F9",APPROVED:"#D0F9D0",SCHEDULED:"#FAFFCB",PUBLISHED:"#F891BB",FAILED:"#FFCCCC",ARCHIVED:"#b8b8c8"};
+const STATUS_TEXT_COLORS = {DRAFT:"#9C1D54",REVIEW:"#1D549C",APPROVED:"#1D9C54",SCHEDULED:"#706000",PUBLISHED:"#F13E93",FAILED:"#9C1D1D",ARCHIVED:"#736F6A"};
 
 const RATES = {
   reel: 500,
@@ -361,439 +364,6 @@ function ChipSelect({label,options,value,onChange}){
 }
 
 // ── B-ROLL VAULT COMPONENT ─────────────────────────────────────────────────────
-function BRollVault({vault,setVault,vaultSearchQuery,setVaultSearchQuery,showToast}){
-  const [view,setView]         = useState("grid");    // grid | detail | add
-  const [selected,setSelected] = useState(null);
-  const [filterMood,setFilterMood]   = useState("");
-  const [filterUse,setFilterUse]     = useState("");
-  const [filterEnergy,setFilterEnergy] = useState("");
-  const [filterFav,setFilterFav]     = useState(false);
-  const [showFilters,setShowFilters]  = useState(false);
-  const fileRef = useRef();
-
-  const emptyClip = () => ({
-    title:"",description:"",mood:"cinematic",
-    visualTags:[],emotionTags:[],location:"",lighting:"",motionType:"",
-    audioFeeling:"",timeOfDay:"",weather:"",clipType:"video",
-    cinematicUse:"",energy:"soft",notes:"",fileUrl:"",thumbnailUrl:"",
-    favorite:false,
-  });
-  const [form,setForm] = useState(emptyClip());
-  const [tagInput,setTagInput]   = useState("");
-  const [eTagInput,setETagInput] = useState("");
-  const [previewUrl,setPreviewUrl] = useState("");
-
-  const updateForm = patch => setForm(f=>({...f,...patch}));
-
-  const handleFile = e => {
-    const file = e.target.files?.[0]; if(!file) return;
-    const url  = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    updateForm({fileUrl:url, thumbnailUrl:url, clipType: file.type.startsWith("video")?"video":"image"});
-  };
-
-  const saveClip = async () => {
-    if(!form.title.trim()) return;
-    try {
-      const payload = {
-        title: form.title,
-        description: form.description,
-        mood: form.mood,
-        visualTags: form.visualTags,
-        emotionTags: form.emotionTags,
-        location: form.location,
-        lighting: form.lighting,
-        motionType: form.motionType,
-        audioFeeling: form.audioFeeling,
-        timeOfDay: form.timeOfDay,
-        weather: form.weather,
-        clipType: form.clipType || "video",
-        cinematicUse: form.cinematicUse,
-        energy: form.energy || "soft",
-        notes: form.notes,
-        fileUrl: form.fileUrl,
-        thumbnailUrl: form.thumbnailUrl,
-        favorite: form.favorite,
-      };
-      const saved = await apiCreateBRoll(payload);
-      setVault(v=>[saved,...v]);
-      setForm(emptyClip()); setPreviewUrl(""); setView("grid");
-      if (showToast) showToast("B-Roll clip saved to vault!");
-    } catch (err) {
-      console.error("[BRollVault] Failed to save B-Roll:", err);
-      if (showToast) showToast("Failed to save B-Roll clip.", "error");
-    }
-  };
-
-  const toggleFav = async id => {
-    const c = vault.find(x=>x.id===id);
-    if(!c) return;
-    try {
-      const updated = await apiUpdateBRoll(id, { favorite: !c.favorite });
-      setVault(v=>v.map(x=>x.id===id?updated:x));
-      setSelected(updated);
-    } catch(err) {
-      console.error("[BRollVault] Failed to toggle favorite:", err);
-      if (showToast) showToast("Failed to toggle favorite status.", "error");
-    }
-  };
-
-  const deleteClip = async id => {
-    try {
-      await apiDeleteBRoll(id);
-      setVault(v=>v.filter(x=>x.id!==id));
-      setView("grid"); setSelected(null);
-      if (showToast) showToast("B-Roll clip deleted.");
-    } catch(err) {
-      console.error("[BRollVault] Failed to delete clip:", err);
-      if (showToast) showToast("Failed to delete clip.", "error");
-    }
-  };
-
-  const filtered = vault.filter(c=>{
-    const q = vaultSearchQuery.toLowerCase();
-    const matchSearch = !q || c.title.toLowerCase().includes(q)||c.description.toLowerCase().includes(q)||
-      (c.visualTags||[]).some(t=>t.toLowerCase().includes(q))||(c.emotionTags||[]).some(t=>t.toLowerCase().includes(q))||
-      c.location?.toLowerCase().includes(q)||c.mood?.toLowerCase().includes(q);
-    const matchMood   = !filterMood   || c.mood===filterMood;
-    const matchUse    = !filterUse    || c.cinematicUse===filterUse;
-    const matchEnergy = !filterEnergy || c.energy===filterEnergy;
-    const matchFav    = !filterFav    || c.favorite;
-    return matchSearch&&matchMood&&matchUse&&matchEnergy&&matchFav;
-  });
-
-  const S = {
-    input:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",boxSizing:"border-box"},
-    textarea:{width:"100%",border:"1px solid var(--border-color)",borderRadius:10,padding:"9px 12px",fontSize:14,fontFamily:"inherit",background:"var(--bg-secondary)",color:"var(--text-primary)",outline:"none",resize:"vertical",minHeight:70,boxSizing:"border-box"},
-    label:{fontSize:12,color:"var(--text-muted)",display:"block",marginBottom:4},
-    card:{background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)",padding:"18px",marginBottom:12},
-    wizardOption:(selected, isList=false)=>({
-      width: "100%",
-      padding: isList ? "12px 18px" : "10px 14px",
-      borderRadius: "12px",
-      minHeight: 44,
-      cursor: "pointer",
-      fontFamily: "inherit",
-      fontSize: 12,
-      transition: "all var(--transition-fast)",
-      display: isList ? "flex" : "inline-flex",
-      alignItems: isList ? "flex-start" : "center",
-      justifyContent: isList ? "flex-start" : "center",
-      textAlign: "left",
-      boxSizing: "border-box",
-      background: selected ? "rgba(241, 62, 147, 0.08)" : "#FFFFFF",
-      color: selected ? "#D01E73" : "#5A5A5A",
-      border: selected ? "1px solid #F13E93" : "1px solid var(--border-color)",
-      fontWeight: selected ? 600 : 400
-    }),
-    btn:(color="var(--accent-color)",sm=false)=>{
-      const isPrimary = color === "var(--accent-color)" || color === "#F13E93";
-      const isSecondary = color === "var(--accent-light)" || color === "#F9D0CD" || color === "secondary";
-      const borderRadius = (isPrimary || isSecondary) ? "12px" : "20px";
-      const bg = isPrimary ? "#F13E93" : (isSecondary ? "#F9D0CD" : `${color}16`);
-      const fg = isPrimary ? "#FFFFFF" : (isSecondary ? "#F13E93" : color);
-      const border = isPrimary ? "#F13E93" : (isSecondary ? "#F9D0CD" : color);
-      return {
-        padding: sm ? "4px 12px" : "8px 17px",
-        borderRadius,
-        border: `1px solid ${border}`,
-        background: bg,
-        color: fg,
-        fontSize: sm ? 11 : 12,
-        cursor: "pointer",
-        fontFamily: "inherit",
-        transition: "all 0.18s",
-        ...(isPrimary && !isSecondary ? {
-          "--btn-bg": "#F13E93",
-          "--btn-color": "#FFFFFF",
-          "--btn-border": "#F13E93",
-          "--btn-hover-bg": "#F891BB",
-          "--btn-hover-color": "#FFFFFF",
-        } : (isSecondary ? {
-          "--btn-bg": "#F9D0CD",
-          "--btn-color": "#F13E93",
-          "--btn-border": "#F9D0CD",
-          "--btn-hover-bg": "#F891BB",
-          "--btn-hover-color": "#FFFFFF",
-        } : {}))
-      };
-    },
-    row:{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"},
-    grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12},
-  };
-
-  // ── ADD FORM ────────────────────────────────────────────────────────────────
-  if(view==="add") return(
-    <div style={{maxWidth:680,margin:"0 auto"}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-        <button onClick={()=>setView("grid")} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)",fontSize:20,fontFamily:"inherit"}}>←</button>
-        <h2 style={{margin:0,fontSize:18,fontWeight:400,color:"var(--text-primary)"}}>new memory</h2>
-      </div>
-
-      {/* upload zone */}
-      <div onClick={()=>fileRef.current?.click()} style={{
-        border:"2px dashed var(--border-color)",borderRadius:16,padding:"32px",textAlign:"center",
-        cursor:"pointer",marginBottom:16,background:previewUrl?"var(--bg-secondary)":"var(--bg-primary)",
-        transition:"all 0.2s",position:"relative",overflow:"hidden",minHeight:140,
-      }}>
-        <input ref={fileRef} type="file" accept="video/*,image/*" style={{display:"none"}} onChange={handleFile}/>
-        {previewUrl?(
-          form.clipType==="video"
-            ? <video src={previewUrl} style={{maxHeight:200,borderRadius:10,maxWidth:"100%"}} controls/>
-            : <img src={previewUrl} style={{maxHeight:200,borderRadius:10,maxWidth:"100%",objectFit:"cover"}} alt="preview"/>
-        ):(
-          <div>
-            <div style={{fontSize:28,marginBottom:8,opacity:0.4}}>◎</div>
-            <div style={{fontSize:14,color:"var(--text-muted)",fontStyle:"italic"}}>drop a clip, screenshot, or cinematic moment</div>
-            <div style={{fontSize:12,color:"var(--text-muted)",opacity:0.8,marginTop:4}}>video · image · fragment · anything worth keeping</div>
-          </div>
-        )}
-      </div>
-
-      <div style={S.card}>
-        <div style={{marginBottom:12}}>
-          <span style={S.label}>title</span>
-          <input value={form.title} onChange={e=>updateForm({title:e.target.value})} placeholder="rainy car window after gym..." style={S.input}/>
-        </div>
-        <div>
-          <span style={S.label}>emotional description <span style={{color:"var(--accent-color)"}}>*</span></span>
-          <textarea value={form.description} onChange={e=>updateForm({description:e.target.value})}
-            placeholder="describe the feeling, not just the content — this is how you'll find it later..."
-            style={{...S.textarea,minHeight:90}}/>
-          <div style={{fontSize:11,color:"var(--text-muted)",marginTop:4,fontStyle:"italic"}}>e.g. "quiet walking footage during blue hour — tired but present, city soft behind me"</div>
-        </div>
-      </div>
-
-      <div style={S.card}>
-        <div style={{fontSize:13,color:"var(--text-secondary)",fontWeight:500,marginBottom:12}}>emotional metadata</div>
-        <div style={{marginBottom:12}}>
-          <span style={S.label}>mood</span>
-          <MoodPicker value={form.mood} onChange={m=>updateForm({mood:m})} moods={VAULT_MOODS}/>
-        </div>
-        <div style={{...S.grid2,marginBottom:12}}>
-          <div>
-            <span style={S.label}>visual tags</span>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
-              {(form.visualTags||[]).map(t=>(
-                <span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"var(--accent-light)",color:"var(--accent-dark)",cursor:"pointer"}} onClick={()=>updateForm({visualTags:form.visualTags.filter(x=>x!==t)})}>
-                  {t} ×
-                </span>
-              ))}
-            </div>
-            <input value={tagInput} onChange={e=>setTagInput(e.target.value)} placeholder="rain, window, city... (enter)" style={{...S.input,fontSize:12}}
-              onKeyDown={e=>{if(e.key==="Enter"||e.key===","){ e.preventDefault(); if(tagInput.trim()){updateForm({visualTags:[...(form.visualTags||[]),tagInput.trim()]});setTagInput("");} }}}/>
-          </div>
-          <div>
-            <span style={S.label}>emotion tags</span>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
-              {(form.emotionTags||[]).map(t=>(
-                <span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"#d4c5e222",color:"#8878a0",cursor:"pointer"}} onClick={()=>updateForm({emotionTags:form.emotionTags.filter(x=>x!==t)})}>
-                  {t} ×
-                </span>
-              ))}
-            </div>
-            <input value={eTagInput} onChange={e=>setETagInput(e.target.value)} placeholder="heavy, quiet, hopeful... (enter)" style={{...S.input,fontSize:12}}
-              onKeyDown={e=>{if(e.key==="Enter"||e.key===","){ e.preventDefault(); if(eTagInput.trim()){updateForm({emotionTags:[...(form.emotionTags||[]),eTagInput.trim()]});setETagInput("");} }}}/>
-          </div>
-        </div>
-        <div style={S.grid2}>
-          <ChipSelect label="cinematic use" options={CINEMATIC_USES} value={form.cinematicUse} onChange={v=>updateForm({cinematicUse:v})}/>
-          <ChipSelect label="energy" options={ENERGY_LEVELS} value={form.energy} onChange={v=>updateForm({energy:v})}/>
-        </div>
-      </div>
-
-      <div style={S.card}>
-        <div style={{fontSize:13,color:"var(--text-secondary)",fontWeight:500,marginBottom:12}}>technical details</div>
-        <div style={{...S.grid2,gap:12}}>
-          <ChipSelect label="time of day"  options={TIME_OF_DAY}      value={form.timeOfDay}   onChange={v=>updateForm({timeOfDay:v})}/>
-          <ChipSelect label="weather"      options={WEATHER_OPTIONS}   value={form.weather}     onChange={v=>updateForm({weather:v})}/>
-          <ChipSelect label="lighting"     options={LIGHTING_OPTIONS}  value={form.lighting}    onChange={v=>updateForm({lighting:v})}/>
-          <ChipSelect label="motion type"  options={MOTION_TYPES}      value={form.motionType}  onChange={v=>updateForm({motionType:v})}/>
-        </div>
-        <div className="form-grid-2" style={{marginTop:12}}>
-          <div>
-            <span style={S.label}>location</span>
-            <input value={form.location} onChange={e=>updateForm({location:e.target.value})} placeholder="bedroom, street, gym..." style={S.input}/>
-          </div>
-          <div>
-            <span style={S.label}>audio feeling</span>
-            <input value={form.audioFeeling} onChange={e=>updateForm({audioFeeling:e.target.value})} placeholder="rain, silence, distant traffic..." style={S.input}/>
-          </div>
-        </div>
-        <div style={{marginTop:12}}>
-          <span style={S.label}>notes</span>
-          <textarea value={form.notes} onChange={e=>updateForm({notes:e.target.value})} placeholder="anything else worth remembering..." style={S.textarea}/>
-        </div>
-      </div>
-
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginBottom:32}}>
-        <button style={S.btn("var(--text-muted)")} onClick={()=>{setForm(emptyClip());setPreviewUrl("");setView("grid");}}>cancel</button>
-        <button style={S.btn("var(--accent-color)")} onClick={saveClip} disabled={!form.title.trim()}>save to vault</button>
-      </div>
-    </div>
-  );
-
-  // ── DETAIL VIEW ─────────────────────────────────────────────────────────────
-  if(view==="detail"&&selected){
-    const c=selected;
-    return(
-      <div style={{maxWidth:680,margin:"0 auto"}} className="card-in">
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-          <button onClick={()=>{setView("grid");setSelected(null);}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)",fontSize:20}}>←</button>
-          <h2 style={{margin:0,fontSize:18,fontWeight:400,color:"var(--text-primary)",flex:1}}>{c.title}</h2>
-          <button onClick={()=>toggleFav(c.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20}}>{c.favorite?"♥":"♡"}</button>
-          <button onClick={()=>deleteClip(c.id)} style={{...S.btn("#f0a090",true)}}>delete</button>
-        </div>
-
-        {c.thumbnailUrl&&(
-          <div style={{borderRadius:16,overflow:"hidden",marginBottom:16,background:"var(--border-color)",maxHeight:300}}>
-            {c.clipType==="video"
-              ? <video src={c.thumbnailUrl} style={{width:"100%",maxHeight:300,objectFit:"cover"}} controls/>
-              : <img src={c.thumbnailUrl} style={{width:"100%",maxHeight:300,objectFit:"cover"}} alt={c.title}/>
-            }
-          </div>
-        )}
-        {!c.thumbnailUrl&&(
-          <div style={{borderRadius:16,background:"var(--bg-secondary)",border:"1px solid var(--border-color)",height:180,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
-            <span style={{fontSize:36,opacity:0.2}}>◎</span>
-          </div>
-        )}
-
-        <div style={S.card}>
-          <div style={{fontSize:15,color:"var(--text-primary)",lineHeight:1.7,fontStyle:"italic",marginBottom:12}}>"{c.description}"</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {c.mood&&<Tag label={c.mood} color={MOOD_COLORS[c.mood]||"#c9b99a"}/>}
-            {c.cinematicUse&&<Tag label={c.cinematicUse} color="#a0b8c8"/>}
-            {c.energy&&<Tag label={c.energy} color="#c8b890"/>}
-          </div>
-        </div>
-
-        <div style={{...S.grid2,gap:12,marginBottom:12}}>
-          <div style={S.card}>
-            <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:8}}>emotional</div>
-            {(c.emotionTags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>{(c.emotionTags||[]).map(t=><span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"#d4c5e222",color:"#8878a0"}}>{t}</span>)}</div>}
-            {(c.visualTags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5}}>{(c.visualTags||[]).map(t=><span key={t} style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:"var(--accent-light)",color:"var(--accent-dark)"}}>{t}</span>)}</div>}
-          </div>
-          <div style={S.card}>
-            <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:8}}>scene details</div>
-            {[["📍",c.location],["◎",c.lighting],["⌗",c.motionType],["☀",c.timeOfDay],["☁",c.weather],["♬",c.audioFeeling]].filter(([,v])=>v).map(([ic,v])=>(
-              <div key={v} style={{fontSize:12,color:"var(--text-secondary)",marginBottom:4}}><span style={{opacity:0.5}}>{ic}</span> {v}</div>
-            ))}
-          </div>
-        </div>
-
-        {c.notes&&(
-          <div style={{...S.card,borderLeft:"3px solid var(--accent-color)"}}>
-            <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:4}}>notes</div>
-            <div style={{fontSize:13,color:"var(--text-primary)",lineHeight:1.6}}>{c.notes}</div>
-          </div>
-        )}
-        <div style={{fontSize:11,color:"var(--text-muted)",textAlign:"right",marginTop:4}}>captured {friendlyDate(c.createdAt)}</div>
-      </div>
-    );
-  }
-
-  // ── GRID VIEW ───────────────────────────────────────────────────────────────
-  return(
-    <div>
-      {/* top bar */}
-      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
-        <div style={{flex:1,position:"relative",minWidth:160}}>
-          <input value={vaultSearchQuery} onChange={e=>setVaultSearchQuery(e.target.value)}
-            placeholder="search by feeling, location, tags..."
-            style={{...S.input,paddingLeft:32,fontSize:13}}/>
-          <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:"var(--text-muted)",fontSize:14,pointerEvents:"none"}}>⌕</span>
-          {vaultSearchQuery && <button onClick={()=>setVaultSearchQuery("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"var(--text-muted)"}}>×</button>}
-        </div>
-        <NavBtn onClick={()=>setShowFilters(f=>!f)} active={showFilters} color="var(--accent-color)">
-          {showFilters?"hide filters":"filter"}
-        </NavBtn>
-        <button onClick={()=>setFilterFav(f=>!f)} style={{
-          background:"none",border:`1px solid ${filterFav?"#f0a090":"var(--border-color)"}`,borderRadius:20,
-          padding:"5px 14px",fontSize:12,cursor:"pointer",color:filterFav?"#f0a090":"var(--text-secondary)",fontFamily:"inherit",
-        }}>{filterFav?"♥ favorites":"♡ favorites"}</button>
-        <button style={S.btn("var(--accent-color)")} onClick={()=>setView("add")}>+ new clip</button>
-      </div>
-
-      {showFilters&&(
-        <div style={{...S.card,marginBottom:16,padding:"14px 18px"}} className="card-in">
-          <div className="form-grid-3">
-            <ChipSelect label="mood"         options={VAULT_MOODS}    value={filterMood}   onChange={setFilterMood}/>
-            <ChipSelect label="cinematic use" options={CINEMATIC_USES} value={filterUse}    onChange={setFilterUse}/>
-            <ChipSelect label="energy"        options={ENERGY_LEVELS}  value={filterEnergy} onChange={setFilterEnergy}/>
-          </div>
-          {(filterMood||filterUse||filterEnergy)&&(
-            <button onClick={()=>{setFilterMood("");setFilterUse("");setFilterEnergy("");}} style={{...S.btn("var(--text-muted)",true),marginTop:10}}>clear filters</button>
-          )}
-        </div>
-      )}
-
-      {/* empty state */}
-      {vault.length===0&&(
-        <div className="empty-state-card" style={{padding: "40px 20px", color:"var(--text-muted)", lineHeight:2.2}}>
-          <div style={{fontSize:36,opacity:0.18,marginBottom:8}}>◎</div>
-          <div style={{fontSize:15,fontStyle:"italic",color:"var(--text-primary)",fontWeight:500}}>your future montages live here</div>
-          <div style={{fontSize:12}}>capture ordinary moments before they disappear</div>
-          <div style={{fontSize:12}}>the quiet clips matter too</div>
-          <button style={{...S.btn("var(--accent-color)"),marginTop:20}} onClick={()=>setView("add")}>add your first clip</button>
-        </div>
-      )}
-
-      {vault.length>0&&filtered.length===0&&(
-        <div style={{textAlign:"center",paddingTop:60,color:"var(--text-muted)",fontStyle:"italic",fontSize:14}}>
-          <div>nothing matches that feeling</div>
-          <div style={{fontSize:12,marginTop:4}}>try different words or clear your filters</div>
-        </div>
-      )}
-
-      {/* masonry grid */}
-      <div className="masonry-grid">
-        {filtered.map(c=>(
-          <div key={c.id} onClick={()=>{setSelected(c);setView("detail");}} style={{
-            breakInside:"avoid",marginBottom:14,borderRadius:16,
-            background:"var(--bg-secondary)",border:"1px solid var(--border-color)",
-            overflow:"hidden",cursor:"pointer",transition:"all 0.2s",
-          }}
-            onMouseEnter={e=>{e.currentTarget.style.boxShadow="var(--shadow-md)";e.currentTarget.style.transform="translateY(-2px)";}}
-            onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="translateY(0)";}}
-          >
-            {/* thumbnail */}
-            {c.thumbnailUrl?(
-              c.clipType==="video"
-                ? <div style={{height:140,background:"var(--border-color)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-                    <video src={c.thumbnailUrl} style={{width:"100%",height:140,objectFit:"cover"}}/>
-                    <div style={{position:"absolute",top:8,right:8,background:"#00000040",borderRadius:20,padding:"2px 8px",fontSize:10,color:"#fff"}}>▶ video</div>
-                  </div>
-                : <img src={c.thumbnailUrl} style={{width:"100%",height:140,objectFit:"cover",display:"block"}} alt={c.title}/>
-            ):(
-              <div style={{height:100,background:`${MOOD_COLORS[c.mood]||"#c9b99a"}18`,display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid var(--border-color)"}}>
-                <span style={{fontSize:28,opacity:0.3}}>◎</span>
-              </div>
-            )}
-
-            <div style={{padding:"12px 14px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                <div style={{fontSize:13,fontWeight:500,color:"var(--text-primary)",lineHeight:1.3,flex:1}}>{c.title}</div>
-                <button onClick={e=>{e.stopPropagation();toggleFav(c.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:c.favorite?"#f0a090":"var(--text-muted)",marginLeft:6,padding:0,lineHeight:1}}>
-                  {c.favorite?"♥":"♡"}
-                </button>
-              </div>
-              <div style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.5,marginBottom:8,fontStyle:"italic",
-                overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
-                {c.description}
-              </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                {c.mood&&<Tag label={c.mood} color={MOOD_COLORS[c.mood]||"#c9b99a"} size={10}/>}
-                {c.timeOfDay&&<Tag label={c.timeOfDay} color="var(--text-muted)" size={10}/>}
-                {c.cinematicUse&&<Tag label={c.cinematicUse} color="#a0b8c8" size={10}/>}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 const getSuggestedShotsForMood = (mood) => {
   const suggestions = {
@@ -1269,6 +839,10 @@ export default function App(){
 
 
   // Local Editing & Dirty States
+  const [plannerView, setPlannerView] = useState("calendar");
+  const [pubHistory, setPubHistory] = useState([]);
+  const [historyTab, setHistoryTab] = useState("Scheduled");
+
   const [localPost, setLocalPost] = useState(null);
   const [savingPost, setSavingPost] = useState(false);
   const [postIsDirty, setPostIsDirty] = useState(false);
@@ -3466,81 +3040,183 @@ export default function App(){
 
         {/* 1. CONTENT PLANNER */}
         {tab==="planner"&&(
-          <div className="card-in">
-            {!user?.instagramUsername && (
-              <div style={{
-                background: "linear-gradient(135deg, rgba(131, 58, 180, 0.08) 0%, rgba(225, 48, 108, 0.08) 100%)",
-                border: "1px solid rgba(225, 48, 108, 0.25)",
-                borderRadius: "16px",
-                padding: "20px",
-                marginBottom: "24px",
-                display: "flex",
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "16px"
-              }} data-test-id="ig-dashboard-promo">
-                <div>
-                  <h3 style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-primary)", margin: "0 0 8px" }}>Connect Instagram to unlock:</h3>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "13px", color: "var(--text-secondary)" }}>
-                    <div>✓ Creator Intelligence</div>
-                    <div>✓ Content Analysis</div>
-                    <div>✓ Hook Analysis</div>
-                    <div>✓ AI Content Ideas</div>
+          <div className="card-in pane-planner">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:16}}>
+                <span style={S.label}>Content Planner</span>
+                <div style={{display:"flex",gap:4,background:"var(--bg-primary)",padding:4,borderRadius:8,border:"1px solid var(--border-color)"}}>
+                  <button onClick={()=>setPlannerView("calendar")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="calendar"?"var(--bg-secondary)":"transparent",color:plannerView==="calendar"?"var(--text-primary)":"var(--text-muted)"}}>Calendar</button>
+                  <button onClick={()=>setPlannerView("list")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="list"?"var(--bg-secondary)":"transparent",color:plannerView==="list"?"var(--text-primary)":"var(--text-muted)"}}>List</button>
+                  <button onClick={()=>setPlannerView("history")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="history"?"var(--bg-secondary)":"transparent",color:plannerView==="history"?"var(--text-primary)":"var(--text-muted)"}}>Publishing History</button>
+                </div>
+              </div>
+              <button style={S.btn("var(--accent-color)")} onClick={async ()=>{const np=await createNewPost({title:"untitled post",type:"REEL",status:"DRAFT",mood:"soft"});setSelectedPost(np);}}>+ new post</button>
+            </div>
+
+            {plannerView === "calendar" && (
+              <>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <NavBtn onClick={()=>navigateCal("prev")}>‹</NavBtn>
+                    <span style={{fontSize:16,fontWeight:500,color:"var(--text-secondary)",minWidth:164,textAlign:"center"}}>{MONTHS[calMonth]} {calYear}</span>
+                    <NavBtn onClick={()=>navigateCal("next")}>›</NavBtn>
+                    {!todayInView&&<NavBtn onClick={()=>navigateCal("today")} active color="var(--accent-color)">today</NavBtn>}
                   </div>
                 </div>
-                <button
-                  onClick={handleInstagramConnectClick}
-                  disabled={igLoading}
-                  style={{
-                    minHeight: "44px",
-                    padding: "0 24px",
-                    borderRadius: "22px",
-                    background: "linear-gradient(135deg, #C13584 0%, #E1306C 100%)",
-                    color: "#FFFFFF",
-                    fontSize: "13px",
-                    fontWeight: "600",
-                    border: "none",
-                    cursor: "pointer",
-                    boxShadow: "0 4px 12px rgba(225, 48, 108, 0.2)"
-                  }}
-                  data-test-id="ig-dashboard-connect-btn"
-                >
-                  {igLoading ? "Connecting..." : "Connect Instagram"}
-                </button>
+
+                <div className={calFade?"cal-grid cal-fade":"cal-grid cal-show"} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:22}}>
+                  {DAYS.map(d=><div key={d} style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",paddingBottom:6,letterSpacing:0.3}}>{d}</div>)}
+                  {cells.map((d,i)=>{
+                    const ds=d?toDateStr(new Date(calYear,calMonth,d)):null;
+                    const tod=ds&&isToday(ds);
+                    const dp=postsOnDay(d);
+                    return(
+                    <div key={i} style={{minHeight:66,borderRadius:12,padding:"5px 6px",background:d?(tod?"var(--accent-light)":"var(--bg-secondary)"):"transparent",border:d?(tod?"1.5px solid var(--border-focus)":"1px solid var(--border-color)"):"none"}}>
+                      {d&&<><div style={{fontSize:11,color:tod?"var(--accent-color)":"var(--text-muted)",fontWeight:tod?600:400,marginBottom:3}}>{d}</div>
+                      {dp.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{fontSize:10,padding:"2px 5px",borderRadius:6,marginBottom:2,cursor:"pointer",background:MOOD_COLORS[p.mood]+"22",color:MOOD_COLORS[p.mood],overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
+                        {TYPE_ICONS[p.type] || "•"} {p.title}
+                        {p.publishAt && <span style={{display:"block",fontSize:9,color:"var(--accent-color)",marginTop:2}}>{new Date(p.publishAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>}
+                      </div>)}</>}
+                    </div>
+                  );})}
+                </div>
+              </>
+            )}
+
+
+            {plannerView === "history" && (
+              <div style={{display:"flex",flexDirection:"column",gap:24}}>
+                <div style={{display:"flex", gap:12, borderBottom:"1px solid var(--border-color)", paddingBottom:8}}>
+                  {["Scheduled", "Published", "Failed"].map(ht => (
+                    <button key={ht} onClick={() => setHistoryTab(ht)} style={{
+                      ...S.ghost,
+                      padding: "6px 16px",
+                      borderRadius: 20,
+                      background: historyTab === ht ? "var(--bg-secondary)" : "transparent",
+                      color: historyTab === ht ? "var(--text-primary)" : "var(--text-muted)",
+                      border: historyTab === ht ? "1px solid var(--border-focus)" : "1px solid transparent"
+                    }}>
+                      {ht}
+                    </button>
+                  ))}
+                </div>
+
+                <div>
+                  {pubHistory.filter(j => 
+                    historyTab === "Scheduled" ? ["PENDING", "PROCESSING"].includes(j.status) :
+                    historyTab === "Published" ? j.status === "COMPLETED" :
+                    j.status === "FAILED"
+                  ).length === 0 && (
+                    <div style={{fontSize:12,color:"var(--text-muted)", padding:"20px 0"}}>
+                      No {historyTab.toLowerCase()} jobs found.
+                    </div>
+                  )}
+
+                  {pubHistory.filter(j => 
+                    historyTab === "Scheduled" ? ["PENDING", "PROCESSING"].includes(j.status) :
+                    historyTab === "Published" ? j.status === "COMPLETED" :
+                    j.status === "FAILED"
+                  ).map(j => (
+                    <div key={j.id} style={{...S.card,marginBottom:10,padding:"14px 18px",display:"flex",alignItems:"center",gap:16}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:14,color:"var(--text-primary)",fontWeight:600}}>{j.post?.title || "Unknown Post"}</div>
+                        <div style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>
+                          Publish At: {new Date(j.publishAt).toLocaleString()}
+                        </div>
+                        {j.lastError && (
+                          <div style={{fontSize:11,color:"#f0a090",marginTop:4, background:"rgba(240, 160, 144, 0.1)", padding:"4px 8px", borderRadius:4}}>
+                            Error: {j.lastError} (Attempts: {j.attempts})
+                          </div>
+                        )}
+                        {j.instagramMediaId && (
+                          <div style={{fontSize:11,color:"#a8c8a0",marginTop:4}}>
+                            Media ID: {j.instagramMediaId}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div style={{display:"flex", flexDirection:"column", alignItems:"flex-end", gap:8}}>
+                        <Tag label={j.status} color={
+                          j.status === "COMPLETED" ? "#a8c8a0" :
+                          j.status === "FAILED" ? "#f0a090" :
+                          "#e2c792"
+                        } />
+                        
+                        {j.status === "FAILED" && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                await apiRetryPublishingJob(j.id);
+                                showToast("Job retry queued successfully!");
+                                const hist = await apiGetPublishingHistory();
+                                setPubHistory(hist);
+                              } catch(err) {
+                                showToast("Failed to retry job", "error");
+                              }
+                            }}
+                            style={{...S.ghost, fontSize:11, color:"var(--accent-color)", padding:"4px 12px", border:"1px solid var(--accent-light)", borderRadius:12}}
+                          >
+                            Retry Publish
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            <div style={{...S.row,justifyContent:"space-between",marginBottom:18}}>
-              <div style={S.row}>
-                <NavBtn onClick={()=>navigateCal("prev")}>‹</NavBtn>
-                <span style={{fontSize:16,fontWeight:500,color:"var(--text-secondary)",minWidth:164,textAlign:"center"}}>{MONTHS[calMonth]} {calYear}</span>
-                <NavBtn onClick={()=>navigateCal("next")}>›</NavBtn>
-                {!todayInView&&<NavBtn onClick={()=>navigateCal("today")} active color="var(--accent-color)">today</NavBtn>}
-              </div>
-              <button style={S.btn("var(--accent-color)")} onClick={async ()=>{const np=await createNewPost({title:"untitled post",type:"reel",status:"draft",mood:"soft"});setSelectedPost(np);}}>+ new post</button>
-            </div>
 
-            <div className={calFade?"cal-grid cal-fade":"cal-grid cal-show"} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:22}}>
-              {DAYS.map(d=><div key={d} style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",paddingBottom:6,letterSpacing:0.3}}>{d}</div>)}
-              {cells.map((d,i)=>{const ds=d?toDateStr(new Date(calYear,calMonth,d)):null;const tod=ds&&isToday(ds);const dp=postsOnDay(d);return(
-                <div key={i} style={{minHeight:66,borderRadius:12,padding:"5px 6px",background:d?(tod?"var(--accent-light)":"var(--bg-secondary)"):"transparent",border:d?(tod?"1.5px solid var(--border-focus)":"1px solid var(--border-color)"):"none"}}>
-                  {d&&<><div style={{fontSize:11,color:tod?"var(--accent-color)":"var(--text-muted)",fontWeight:tod?600:400,marginBottom:3}}>{d}</div>
-                  {dp.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{fontSize:10,padding:"2px 5px",borderRadius:6,marginBottom:2,cursor:"pointer",background:MOOD_COLORS[p.mood]+"22",color:MOOD_COLORS[p.mood],overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{TYPE_ICONS[p.type]} {p.title}</div>)}</>}
+            {plannerView === "list" && (
+              <div style={{display:"flex",flexDirection:"column",gap:24}}>
+                <div>
+                  <h4 style={{fontSize:14,color:"var(--accent-color)",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Scheduled Content</h4>
+                  {posts.filter(p => p.status === "SCHEDULED").length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No posts scheduled.</div>}
+                  {posts.filter(p => p.status === "SCHEDULED").sort((a,b)=>new Date(a.publishAt||0).getTime() - new Date(b.publishAt||0).getTime()).map(p => (
+                    <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:600}}>{p.title}</div>
+                        <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                          Scheduled for: {p.publishAt ? new Date(p.publishAt).toLocaleString() : "TBD"}
+                        </div>
+                      </div>
+                      <Tag label="SCHEDULED" color={STATUS_COLORS["SCHEDULED"]}/>
+                      <Tag label={p.type} color="#ccc" />
+                    </div>
+                  ))}
                 </div>
-              );})}
-            </div>
-
-            <div><span style={{...S.label,marginBottom:10}}>all posts</span>
-              {["draft","scheduled","posted","archived"].map(status=>{
+                
+                <div>
+                  <h4 style={{fontSize:14,color:"var(--text-secondary)",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Upcoming Content</h4>
+                  {posts.filter(p => ["DRAFT", "REVIEW", "APPROVED"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No upcoming posts.</div>}
+                  {posts.filter(p => ["DRAFT", "REVIEW", "APPROVED"].includes(p.status)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(p => (
+                    <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,color:"var(--text-primary)"}}>{p.title}</div>
+                        <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                          {isToday(p.date)?"today ✧":friendlyDate(p.date)} · {p.mood}
+                        </div>
+                      </div>
+                      <Tag label={p.status} color={STATUS_COLORS[p.status]}/>
+                      <Tag label={p.type} color="#ccc" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Kept "all posts" at bottom for completeness (optional) */}
+            <div style={{marginTop:32}}><span style={{...S.label,marginBottom:10}}>all posts history</span>
+              {["PUBLISHED", "FAILED", "ARCHIVED"].map(status=>{
                 const group=posts.filter(p=>p.status===status).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
                 if(!group.length)return null;
                 return(<div key={status} style={{marginBottom:18}}>
-                  <div style={{fontSize:11,color:STATUS_COLORS[status],marginBottom:7,letterSpacing:0.5}}>{status==="posted"?"released into the universe":status}</div>
-                  {group.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,opacity:status==="archived"?0.5:1}}>
+                  <div style={{fontSize:11,color:STATUS_COLORS[status],marginBottom:7,letterSpacing:0.5}}>{status==="PUBLISHED"?"released into the universe":status}</div>
+                  {group.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,opacity:status==="ARCHIVED"?0.5:1}}>
                     <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
-                    <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,color:"var(--text-primary)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{p.title}</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{isToday(p.date)?"today ✦":friendlyDate(p.date)} · {p.mood}{p.shootId?" · 🎬":""}</div></div>
-                    <Tag label={status==="posted"?"released":status} color={STATUS_COLORS[status]}/>
+                    <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,color:"var(--text-primary)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{p.title}</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{isToday(p.date)?"today ✧":friendlyDate(p.date)} · {p.mood}{p.shootId?" · 🎬":""}</div></div>
+                    <Tag label={status==="PUBLISHED"?"released":status} color={STATUS_COLORS[status]}/>
                   </div>)}
                 </div>);
               })}
@@ -5548,411 +5224,20 @@ export default function App(){
 
       </div>
 
-      {/* Relocated Edit Post Modal (Fixed Position relative to Viewport) */}
-      {selectedPost&&localPost&&(
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(18, 17, 16, 0.4)",
-          backdropFilter: "blur(4px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "20px"
-        }} onClick={handleCancelPost}>
-          <div className="card-in" style={{
-            ...S.card,
-            width: "100%",
-            maxWidth: "600px",
-            maxHeight: "90vh",
-            overflowY: "auto",
-            border: "1px solid var(--border-focus)",
-            boxShadow: "var(--shadow-lg)",
-            margin: 0
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{...S.row,justifyContent:"space-between",marginBottom:16}}>
-              <input value={localPost.title} onChange={e=>{ setLocalPost(prev=>({...prev,title:e.target.value})); setPostIsDirty(true); }} style={{...S.input,fontSize:16,fontWeight:500,border:"none",background:"transparent",padding:0,flex:1}}/>
-              <button onClick={handleCancelPost} style={{...S.ghost,fontSize:20,color:"var(--text-muted)"}}>×</button>
-            </div>
-            <div style={S.grid2}>
-              <div><span style={S.label}>date</span><input type="date" value={localPost.date||""} style={S.input} onChange={e=>{ setLocalPost(prev=>({...prev,date:e.target.value})); setPostIsDirty(true); }}/></div>
-              <div><span style={S.label}>post type</span><div style={{...S.row,flexWrap:"wrap"}}>{POST_TYPES.map(t=>(
-                <SelectableChip
-                  key={t}
-                  selected={localPost.type===t}
-                  onClick={()=>{ setLocalPost(prev=>({...prev,type:t})); setPostIsDirty(true); }}
-                  icon={TYPE_ICONS[t]}
-                  data-testid={`post-type-chip-${t}`}
-                >
-                  {t}
-                </SelectableChip>
-              ))}</div></div>
-            </div>
-            <div style={{marginTop:12}}><span style={S.label}>status</span><div style={S.row}>{["draft","scheduled","posted","archived"].map(st=>(
-              <SelectableChip
-                key={st}
-                selected={localPost.status===st}
-                onClick={()=>{ setLocalPost(prev=>({...prev,status:st})); setPostIsDirty(true); }}
-                data-testid={`post-status-chip-${st}`}
-              >
-                {st==="posted"?"released ✦":st==="archived"?"archived":st}
-              </SelectableChip>
-            ))}</div></div>
-            <div style={{marginTop:12}}><span style={S.label}>mood</span><MoodPicker value={localPost.mood} onChange={m=>{ setLocalPost(prev=>({...prev,mood:m})); setPostIsDirty(true); }}/></div>
-            <div style={{marginTop:12}}><span style={S.label}>linked shoot</span>
-              <div style={S.row}>
-                <select value={localPost.shootId||""} style={{...S.input,flex:1,cursor:"pointer"}} onChange={e=>{ setLocalPost(prev=>({...prev,shootId:e.target.value || null})); setPostIsDirty(true); }}>
-                  <option value="">no shoot linked</option>
-                  {shoots.map(s=><option key={s.id} value={s.id}>{s.name}{s.shootDate?" · "+friendlyDate(s.shootDate):""}</option>)}
-                </select>
-                {localPost.shootId&&<button style={S.btn("#a0b8c8",true)} onClick={()=>{setSelectedShootId(localPost.shootId);setTab("shoot");setSelectedPost(null);}}>open →</button>}
-                <button style={S.btn("#d4c5e2",true)} onClick={async ()=>{
-                  try {
-                    const ns = await apiCreateShoot({
-                      name: (localPost.title || "untitled") + " — shoot",
-                      shootDate: localPost.date || todayStr,
-                      postId: localPost.id,
-                      slots: getSuggestedShotsForMood(localPost.mood)
-                    });
-                    setShoots(ss=>[...ss,ns]);
-                    setLocalPost(prev=>({...prev,shootId:ns.id}));
-                    setPostIsDirty(true);
-                    setSelectedShootId(ns.id);
-                  } catch (err) {
-                    console.error("Failed to create shoot for post:", err);
-                    showToast("Failed to create shoot.", "error");
-                  }
-                }}>+ create shoot</button>
-              </div>
-            </div>
-            <div style={{marginTop:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                <span style={S.label}>caption & ideas</span>
-                {!tryParseJSON(selectedPost?.caption) && (
-                  <button onClick={generatePostIdeasAI} disabled={aiGeneratingPostIdeas} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
-                    {aiGeneratingPostIdeas ? "✨ Generating..." : "✨ AI Thumbnails & Hooks"}
-                  </button>
-                )}
-              </div>
-              
-              {aiGeneratingPostIdeas ? (
-                <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: 180,
-                  background: "var(--bg-secondary)",
-                  borderRadius: 12,
-                  border: "1px dashed var(--accent-color)",
-                  padding: 16,
-                  textAlign: "center"
-                }}>
-                  <div style={{ fontSize: 24, marginBottom: 12, animation: "bounce-cinematic 2s infinite ease-in-out" }}>⚡</div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: 4 }}>
-                    Generating Hooks & Creative Angles...
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 280 }}>
-                    Consulting viral structures, emotional hooks, and B-roll scripts.
-                  </div>
-                </div>
-              ) : (() => {
-                const parsed = tryParseJSON(selectedPost?.caption);
-                if (parsed) {
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 12, padding: 14 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{
-                            background: "linear-gradient(135deg, var(--accent-color) 0%, var(--accent-dark) 100%)",
-                            color: "#FFFFFF",
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: "2px 6px",
-                            borderRadius: 6,
-                            letterSpacing: "0.05em",
-                            textTransform: "uppercase"
-                          }}>
-                            AI: {parsed.mode ? parsed.mode.toUpperCase() : "MOCK"}
-                          </span>
-                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Structured Hooks Studio</span>
-                        </div>
-                        <button 
-                          onClick={() => updatePost(selectedPost?.id, { caption: parsed.hooks?.[0] || "" })} 
-                          style={{ ...S.ghost, color: "#f0a090", fontSize: 10, border: "1px solid rgba(240, 160, 144, 0.4)", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
-                        >
-                          Reset to Editor
-                        </button>
-                      </div>
-
-                      {parsed.titleIdeas && parsed.titleIdeas.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Title Ideas</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {parsed.titleIdeas.map((tText, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "6px 10px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span>{tText}</span>
-                                <button onClick={() => { navigator.clipboard.writeText(tText); alert("Title copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}>Copy</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.hooks && parsed.hooks.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Viral Hook Variations</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            {parsed.hooks.map((hook, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "10px 12px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                                <span style={{ fontStyle: "italic", fontFamily: "var(--font-serif)", lineHeight: 1.4 }}>{hook}</span>
-                                <button onClick={() => { navigator.clipboard.writeText(hook); alert("Hook copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10, flexShrink: 0 }}>Copy</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.openingShots && parsed.openingShots.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Opening B-Roll Shot Suggestions</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {parsed.openingShots.map((shot, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "8px 10px", borderRadius: 8, fontSize: 11, color: "var(--text-primary)", borderLeft: "2px solid var(--accent-color)" }}>
-                                {shot}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.emotionalAngles && parsed.emotionalAngles.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Emotional Hooks</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {parsed.emotionalAngles.map((angle, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "6px 10px", borderRadius: 8, fontSize: 11, color: "var(--text-secondary)" }}>
-                                {angle}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.ctas && parsed.ctas.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Creator CTAs</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {parsed.ctas.map((ctaVal, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "6px 10px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span>{ctaVal}</span>
-                                <button onClick={() => { navigator.clipboard.writeText(ctaVal); alert("CTA copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}>Copy</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.hashtags && parsed.hashtags.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Optimized Hashtags</span>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            {parsed.hashtags.map((tag, idx) => (
-                              <span key={idx} onClick={() => { navigator.clipboard.writeText(`#${tag}`); alert(`#${tag} copied!`); }} style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", padding: "2px 8px", borderRadius: 10, fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}>
-                                #{tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                } else {
-                  return (
-                    <>
-                      <textarea value={localPost.caption || ""} style={S.textarea} placeholder="what do you want to say..." onChange={e=>{ setLocalPost(prev=>({...prev,caption:e.target.value})); setPostIsDirty(true); }}/>
-                      <div style={{marginTop:10}}><span style={S.label}>hashtags</span><textarea value={localPost.hashtags || ""} style={{...S.textarea,minHeight:46}} placeholder="#yourhashtags" onChange={e=>{ setLocalPost(prev=>({...prev,hashtags:e.target.value})); setPostIsDirty(true); }}/></div>
-                    </>
-                  );
-                }
-              })()}
-            </div>
-
-            <div style={{marginTop:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                <span style={S.label}>AI Caption Studio</span>
-                {!tryParseJSON(selectedPost?.notes) && (
-                  <button onClick={generateCaptionsAI} disabled={aiGeneratingCaptions} style={{...S.ghost, color:"var(--accent-color)", fontSize:11, padding:"2px 8px", border:"1px solid var(--accent-light)", borderRadius:12}}>
-                    {aiGeneratingCaptions ? "✨ Generating..." : "✨ AI Caption Studio"}
-                  </button>
-                )}
-              </div>
-              
-              {aiGeneratingCaptions ? (
-                <div style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: 180,
-                  background: "var(--bg-secondary)",
-                  borderRadius: 12,
-                  border: "1px dashed var(--accent-color)",
-                  padding: 16,
-                  textAlign: "center"
-                }}>
-                  <div style={{ fontSize: 24, marginBottom: 12, animation: "bounce-cinematic 2s infinite ease-in-out" }}>✍️</div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: 4 }}>
-                    Generating Captions & CTAs...
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 280 }}>
-                    Structuring short & storytelling formats, CTA variations, and hashtag clusters.
-                  </div>
-                </div>
-              ) : (() => {
-                const parsed = tryParseJSON(selectedPost?.notes);
-                if (parsed) {
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16, background: "var(--bg-secondary)", border: "1px solid var(--border-color)", borderRadius: 12, padding: 14 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: 8 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{
-                            background: "linear-gradient(135deg, var(--accent-color) 0%, var(--accent-dark) 100%)",
-                            color: "#FFFFFF",
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: "2px 6px",
-                            borderRadius: 6,
-                            letterSpacing: "0.05em",
-                            textTransform: "uppercase"
-                          }}>
-                            AI: {parsed.mode ? parsed.mode.toUpperCase() : "MOCK"}
-                          </span>
-                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Caption Studio</span>
-                        </div>
-                        <button 
-                          onClick={() => updatePost(selectedPost?.id, { notes: "" })} 
-                          style={{ ...S.ghost, color: "#f0a090", fontSize: 10, border: "1px solid rgba(240, 160, 144, 0.4)", borderRadius: 6, padding: "2px 6px", cursor: "pointer" }}
-                        >
-                          Reset to Editor
-                        </button>
-                      </div>
-
-                      {parsed.shortCaptions && parsed.shortCaptions.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Short Captions (High Impact)</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            {parsed.shortCaptions.map((capText, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "10px 12px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                                <span style={{ lineHeight: 1.4 }}>{capText}</span>
-                                <button onClick={() => { navigator.clipboard.writeText(capText); alert("Caption copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10, flexShrink: 0 }}>Copy</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {(parsed.longCaptions || parsed.storytellingCaptions) && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Long Storytelling Captions</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {[]
-                              .concat(parsed.longCaptions || [])
-                              .concat(parsed.storytellingCaptions || [])
-                              .filter(Boolean)
-                              .map((capText, idx) => (
-                                <div key={idx} style={{ background: "var(--bg-primary)", padding: "12px 14px", borderRadius: 8, fontSize: 12, position: "relative" }}>
-                                  <span style={{ whiteSpace: "pre-wrap", display: "block", paddingRight: 40, lineHeight: 1.5 }}>{capText}</span>
-                                  <button 
-                                    onClick={() => { navigator.clipboard.writeText(capText); alert("Caption copied!"); }} 
-                                    style={{ position: "absolute", right: 12, top: 12, ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}
-                                  >
-                                    Copy
-                                  </button>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.ctas && parsed.ctas.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Engagement CTAs</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {parsed.ctas.map((ctaText, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "8px 10px", borderRadius: 8, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span>{ctaText}</span>
-                                <button onClick={() => { navigator.clipboard.writeText(ctaText); alert("CTA copied!"); }} style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10 }}>Copy</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.hashtagGroups && parsed.hashtagGroups.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Hashtag Groups</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {parsed.hashtagGroups.map((group, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "10px 12px", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                  {group.map((tag, tIdx) => (
-                                    <span key={tIdx} style={{ fontSize: 11, color: "var(--text-muted)" }}>#{tag}</span>
-                                  ))}
-                                </div>
-                                <button 
-                                  onClick={() => { 
-                                    navigator.clipboard.writeText(group.map(t => `#${t}`).join(" ")); 
-                                    alert("Hashtag group copied!"); 
-                                  }} 
-                                  style={{ ...S.ghost, color: "var(--accent-color)", fontSize: 10, flexShrink: 0 }}
-                                >
-                                  Copy Group
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parsed.postingTips && parsed.postingTips.length > 0 && (
-                        <div>
-                          <span style={{ ...S.label, fontSize: 10, display: "block", marginBottom: 4 }}>Posting Guidelines & Strategy</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {parsed.postingTips.map((tip, idx) => (
-                              <div key={idx} style={{ background: "var(--bg-primary)", padding: "8px 10px", borderRadius: 8, fontSize: 11, color: "var(--text-primary)", borderLeft: "2px solid var(--accent-color)" }}>
-                                {tip}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                } else {
-                  return (
-                    <>
-                      <textarea value={localPost.notes || ""} style={{ ...S.textarea, minHeight: 60 }} placeholder="B-roll guidelines, raw caption drafting notes..." onChange={e=>{ setLocalPost(prev=>({...prev,notes:e.target.value})); setPostIsDirty(true); }}/>
-                    </>
-                  );
-                }
-              })()}
-            </div>
-            <div style={{...S.row,justifyContent:"flex-end",marginTop:14,gap:10}}>
-              <SaveButton data-testid="planner-save" data-test-id="planner-save" label="Save Post" isDirty={postIsDirty} saving={savingPost} onClick={handleSavePost} />
-              {postIsDirty && (
-                <button style={S.btn("var(--text-muted)", true)} onClick={handleResetPost}>Reset</button>
-              )}
-              <button style={S.btn("var(--text-muted)",true)} onClick={()=>{updatePost(localPost.id,{status:"archived"});setSelectedPost(null);}}>archive</button>
-              <button style={S.btn("#f0a090",true)} onClick={()=>deletePost(localPost.id)}>delete forever</button>
-              <button data-testid="planner-cancel" data-test-id="planner-cancel" style={S.btn("var(--text-muted)",true)} onClick={handleCancelPost}>cancel</button>
-            </div>
-          </div>
-        </div>
+            {/* New Extracted Edit Post Modal */}
+      {selectedPost && localPost && (
+        <PostEditorModal 
+          post={localPost}
+          vault={vault}
+          onSave={async (updatedData) => {
+            await updatePost(updatedData.id, updatedData);
+            setSelectedPost(null);
+          }}
+          onClose={() => {
+            setSelectedPost(null);
+            setLocalPost(null);
+          }}
+        />
       )}
 
       {showWizard && (

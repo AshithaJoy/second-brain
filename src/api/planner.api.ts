@@ -43,6 +43,11 @@ export async function deletePost(id: string) {
   return response.data;
 }
 
+export async function schedulePost(id: string) {
+  const response = await api.post(`/planner/posts/${id}/schedule`);
+  return mapPostToFrontend(response.data);
+}
+
 export async function generateHooks(postId: string) {
   const response = await api.post("/planner/hooks", { postId });
   return response.data;
@@ -97,5 +102,15 @@ export async function updateShoot(id: string, patch: any) {
 
 export async function deleteShoot(id: string) {
   const response = await api.delete(`/planner/shoots/${id}`);
+  return response.data;
+}
+
+export async function getPublishingHistory() {
+  const response = await api.get("/planner/publishing-history");
+  return response.data;
+}
+
+export async function retryPublishingJob(jobId: string) {
+  const response = await api.post(`/planner/publishing-history/${jobId}/retry`);
   return response.data;
 }
