@@ -101,17 +101,20 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
   const isTypeValid = POST_TYPES.includes(form.type);
   const hasCaption = form.caption.trim().length > 0;
   const isApproved = form.status === "APPROVED" || form.status === "SCHEDULED" || form.status === "PUBLISHED" || form.status === "PUBLISHING";
-  const isPublishAtSet = !!(form.publishAtDate && form.publishAtTime);
+  const isPublishDateSet = !!form.publishAtDate;
+  const isPublishTimeSet = !!form.publishAtTime;
+  const isPublishAtSet = isPublishDateSet && isPublishTimeSet;
 
   // Calculate Health Score
-  let totalChecks = 6;
+  let totalChecks = 7;
   let passedChecks = 0;
   if (assetsValid) passedChecks++;
   if (hasCaption) passedChecks++;
   if (isTypeValid) passedChecks++;
   if (isInstagramConnected) passedChecks++;
   if (isApproved) passedChecks++;
-  if (isPublishAtSet) passedChecks++;
+  if (isPublishDateSet) passedChecks++;
+  if (isPublishTimeSet) passedChecks++;
 
   const healthScore = Math.round((passedChecks / totalChecks) * 100);
   
@@ -276,8 +279,12 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
                   <span style={{ color: isApproved ? "var(--text-primary)" : "var(--text-muted)" }}>Approved</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ color: isPublishAtSet ? "var(--accent-color)" : "#f88" }}>{isPublishAtSet ? "✓" : "✗"}</span>
-                  <span style={{ color: isPublishAtSet ? "var(--text-primary)" : "var(--text-muted)" }}>Publish Time Set</span>
+                  <span style={{ color: isPublishDateSet ? "var(--accent-color)" : "#f88" }}>{isPublishDateSet ? "✓" : "✗"}</span>
+                  <span style={{ color: isPublishDateSet ? "var(--text-primary)" : "var(--text-muted)" }}>Publish Date Set</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: isPublishTimeSet ? "var(--accent-color)" : "#f88" }}>{isPublishTimeSet ? "✓" : "✗"}</span>
+                  <span style={{ color: isPublishTimeSet ? "var(--text-primary)" : "var(--text-muted)" }}>Publish Time Set</span>
                 </div>
               </div>
               
@@ -309,8 +316,23 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
 
         <div style={{ padding: 24, borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-             {healthScore === 100 && post?.id && (
-              <button onClick={handleSchedule} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--accent-color)", color: "#fff", cursor: "pointer", fontWeight: "bold" }}>Schedule for Publishing</button>
+             {post?.id && (
+              <button 
+                onClick={handleSchedule} 
+                disabled={healthScore !== 100}
+                style={{ 
+                  padding: "8px 16px", 
+                  borderRadius: 8, 
+                  border: "none", 
+                  background: healthScore === 100 ? "var(--accent-color)" : "var(--border-color)", 
+                  color: healthScore === 100 ? "#fff" : "var(--text-muted)", 
+                  cursor: healthScore === 100 ? "pointer" : "not-allowed", 
+                  fontWeight: "bold",
+                  opacity: healthScore === 100 ? 1 : 0.6
+                }}
+              >
+                Schedule for Publishing
+              </button>
              )}
           </div>
           <div style={{ display: "flex", gap: 12 }}>
