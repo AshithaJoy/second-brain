@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuthStore } from "../../stores/auth.store";
 import { UnifiedMediaPicker } from "../UnifiedMediaPicker";
-import { schedulePost } from "../../api/planner.api";
+import { schedulePost, updatePost as apiUpdatePost } from "../../api/planner.api";
 
 const POST_TYPES = ["REEL", "IMAGE", "CAROUSEL", "STORY", "NOTE"];
 const STATUS_OPTIONS = ["DRAFT", "REVIEW", "APPROVED", "SCHEDULED", "PUBLISHED", "FAILED", "ARCHIVED"];
@@ -64,11 +64,16 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
     setSchedulingError("");
     try {
       const publishAt = parseLocalToUTC(form.publishAtDate, form.publishAtTime);
-      await onSave({ ...form, id: post?.id, publishAt }, false);
       
       if (post?.id) {
+        // 1. Direct PUT request to auto-save the form state and publishAt
+        const savedPost = await apiUpdatePost(post.id, { ...form, publishAt });
+        
+        // 2. Call the schedule endpoint
         await schedulePost(post.id);
-        onClose();
+        
+        // 3. Notify parent to update state and close modal
+        onSave(savedPost, true);
       }
     } catch (err) {
       setSchedulingError(err.response?.data?.error || err.message || "Failed to schedule");
