@@ -7,6 +7,33 @@ const POST_TYPES = ["REEL", "IMAGE", "CAROUSEL", "STORY", "NOTE"];
 const STATUS_OPTIONS = ["DRAFT", "REVIEW", "APPROVED", "SCHEDULED", "PUBLISHED", "FAILED", "ARCHIVED"];
 const MOODS = ["cinematic", "soft", "chaotic", "reflective", "motivated", "low-energy", "rebuilding", "funny", "existential"];
 
+const getLocalDateString = (dateStr) => {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getLocalTimeString = (dateStr) => {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const parseLocalToUTC = (dateStr, timeStr) => {
+  if (!dateStr || !timeStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const d = new Date(year, month - 1, day, hours, minutes);
+  return d.toISOString();
+};
+
 export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
   const { user } = useAuthStore();
   const [form, setForm] = useState({
@@ -19,8 +46,8 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
     hashtags: post?.hashtags || "",
     notes: post?.notes || "",
     brollIds: post?.brolls?.map(b => b.id) || [],
-    publishAtDate: post?.publishAt ? new Date(post.publishAt).toISOString().split('T')[0] : "",
-    publishAtTime: post?.publishAt ? new Date(post.publishAt).toTimeString().substring(0, 5) : ""
+    publishAtDate: getLocalDateString(post?.publishAt),
+    publishAtTime: getLocalTimeString(post?.publishAt)
   });
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [schedulingError, setSchedulingError] = useState("");
@@ -29,23 +56,15 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
 
   const handleSave = () => {
     if (!form.title.trim()) return;
-    
-    let publishAt = null;
-    if (form.publishAtDate && form.publishAtTime) {
-      publishAt = new Date(`${form.publishAtDate}T${form.publishAtTime}`).toISOString();
-    }
-    
+    const publishAt = parseLocalToUTC(form.publishAtDate, form.publishAtTime);
     onSave({ ...form, id: post?.id, publishAt });
   };
 
   const handleSchedule = async () => {
     setSchedulingError("");
     try {
-      let publishAt = null;
-      if (form.publishAtDate && form.publishAtTime) {
-        publishAt = new Date(`${form.publishAtDate}T${form.publishAtTime}`).toISOString();
-      }
-      await onSave({ ...form, id: post?.id, publishAt });
+      const publishAt = parseLocalToUTC(form.publishAtDate, form.publishAtTime);
+      await onSave({ ...form, id: post?.id, publishAt }, false);
       
       if (post?.id) {
         await schedulePost(post.id);
@@ -56,12 +75,17 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
     }
   };
 
-  const attachedBRolls = vault.filter(v => form.brollIds.includes(v.id));
+  // Unified media source: combine already saved post.brolls and any loaded from the vault matching form.brollIds
+  const attachedBRolls = form.brollIds.map(id => {
+    const saved = post?.brolls?.find(b => b.id === id);
+    if (saved) return saved;
+    return vault.find(v => v.id === id);
+  }).filter(Boolean);
   
   // Readiness Checklist logic
   const isInstagramConnected = !!(user?.instagramUserId && user?.instagramConnectedAt);
-  const videoAssets = attachedBRolls.filter(b => b.format === "video" || b.clipType === "video").length;
-  const imageAssets = attachedBRolls.filter(b => b.format === "image" || b.clipType === "image").length;
+  const videoAssets = attachedBRolls.filter(b => b.clipType === "video" || b.format === "video").length;
+  const imageAssets = attachedBRolls.filter(b => b.clipType === "image" || b.format === "image").length;
   
   let assetsValid = false;
   if (form.type === "REEL" && videoAssets >= 1) assetsValid = true;
@@ -72,15 +96,17 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
   const isTypeValid = POST_TYPES.includes(form.type);
   const hasCaption = form.caption.trim().length > 0;
   const isApproved = form.status === "APPROVED" || form.status === "SCHEDULED" || form.status === "PUBLISHED" || form.status === "PUBLISHING";
+  const isPublishAtSet = !!(form.publishAtDate && form.publishAtTime);
 
   // Calculate Health Score
-  let totalChecks = 5;
+  let totalChecks = 6;
   let passedChecks = 0;
   if (assetsValid) passedChecks++;
   if (hasCaption) passedChecks++;
   if (isTypeValid) passedChecks++;
   if (isInstagramConnected) passedChecks++;
   if (isApproved) passedChecks++;
+  if (isPublishAtSet) passedChecks++;
 
   const healthScore = Math.round((passedChecks / totalChecks) * 100);
   
@@ -244,7 +270,28 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
                   <span style={{ color: isApproved ? "var(--accent-color)" : "#f88" }}>{isApproved ? "✓" : "✗"}</span>
                   <span style={{ color: isApproved ? "var(--text-primary)" : "var(--text-muted)" }}>Approved</span>
                 </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: isPublishAtSet ? "var(--accent-color)" : "#f88" }}>{isPublishAtSet ? "✓" : "✗"}</span>
+                  <span style={{ color: isPublishAtSet ? "var(--text-primary)" : "var(--text-muted)" }}>Publish Time Set</span>
+                </div>
               </div>
+              
+              {isPublishAtSet && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid var(--border-color)", paddingTop: 8 }}>
+                  <div>Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}</div>
+                  <div style={{ color: "var(--accent-color)", fontWeight: "bold" }}>
+                    {(() => {
+                      const target = new Date(`${form.publishAtDate}T${form.publishAtTime}`);
+                      const diffMs = target.getTime() - Date.now();
+                      if (diffMs <= 0) return "Publish time has passed";
+                      const diffMins = Math.floor(diffMs / 60000);
+                      const hours = Math.floor(diffMins / 60);
+                      const mins = diffMins % 60;
+                      return hours > 0 ? `Next publish in: ${hours}h ${mins}m` : `Next publish in: ${mins}m`;
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
 
             {schedulingError && (

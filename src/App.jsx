@@ -5256,11 +5256,14 @@ export default function App(){
             {/* New Extracted Edit Post Modal */}
       {selectedPost && localPost && (
         <PostEditorModal 
+          key={localPost.id + "_" + (localPost.updatedAt || "") + "_" + (localPost.publishAt || "")}
           post={localPost}
           vault={vault}
-          onSave={async (updatedData) => {
+          onSave={async (updatedData, closeAfterSave = true) => {
             await updatePost(updatedData.id, updatedData);
-            setSelectedPost(null);
+            if (closeAfterSave) {
+              setSelectedPost(null);
+            }
           }}
           onClose={() => {
             setSelectedPost(null);
