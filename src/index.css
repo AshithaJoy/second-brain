@@ -68,7 +68,58 @@
   --mood-frustrated-border: #BF8B8B;
   --mood-frustrated-text: #753C3C;
   --mood-frustrated-hover-bg: #EDD5D5;
+} 
+
+/* Global spacing variables */
+:root {
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
 }
+
+/* Utility classes */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.planner-tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.history-filters {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+.calendar-cell {
+  min-height: 66px;
+  border-radius: 12px;
+  padding: 5px 6px;
+  background: var(--bg-secondary);
+}
+
+.history-card {
+  width: 100%;
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+}
+
 
 [data-theme="dark"] {
   /* Pro Edit Bay Dark Theme - Branded with InstaBrain Pink Accents */
