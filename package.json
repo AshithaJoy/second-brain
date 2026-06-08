@@ -11,9 +11,11 @@
     "all": "concurrently \"npm run dev\" \"npm run dev --prefix ../second-brain-backend\"",
     "test:e2e": "playwright test",
     "test": "npm run lint",
-    "test:full": "npm run test && npm run test:e2e && node scripts/generate_test_report.js"
+    "test:full": "npm run test && npm run test:e2e && node scripts/generate_test_report.js",
+    "start": "serve -s dist"
   },
   "dependencies": {
+    "serve": "^14.2.0",
     "@react-oauth/google": "^0.13.5",
     "axios": "^1.16.1",
     "react": "^19.2.6",

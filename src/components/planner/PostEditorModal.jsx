@@ -62,20 +62,25 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
 
   const handleSchedule = async () => {
     setSchedulingError("");
+    console.log("[SCHEDULE] Starting", post?.id);
+    console.log("[SCHEDULE] Form state", form);
+    console.log("[SCHEDULE] PublishAt", parseLocalToUTC(form.publishAtDate, form.publishAtTime));
     try {
       const publishAt = parseLocalToUTC(form.publishAtDate, form.publishAtTime);
       
       if (post?.id) {
         // 1. Direct PUT request to auto-save the form state and publishAt
         const savedPost = await apiUpdatePost(post.id, { ...form, publishAt });
-        
-        // 2. Call the schedule endpoint
-        await schedulePost(post.id);
+
+        console.log("[SCHEDULE] Calling schedulePost");
+        const scheduleResponse = await schedulePost(post.id);
+        console.log("[SCHEDULE] Response", scheduleResponse);
         
         // 3. Notify parent to update state and close modal
         onSave(savedPost, true);
       }
     } catch (err) {
+      console.error("[SCHEDULE] Failed", err);
       setSchedulingError(err.response?.data?.error || err.message || "Failed to schedule");
     }
   };
