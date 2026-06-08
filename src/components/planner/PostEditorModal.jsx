@@ -67,17 +67,12 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
     console.log("[SCHEDULE] PublishAt", parseLocalToUTC(form.publishAtDate, form.publishAtTime));
     try {
       const publishAt = parseLocalToUTC(form.publishAtDate, form.publishAtTime);
-      
       if (post?.id) {
-        // 1. Direct PUT request to auto-save the form state and publishAt
-        const savedPost = await apiUpdatePost(post.id, { ...form, publishAt });
-
-        console.log("[SCHEDULE] Calling schedulePost");
-        const scheduleResponse = await schedulePost(post.id);
-        console.log("[SCHEDULE] Response", scheduleResponse);
-        
-        // 3. Notify parent to update state and close modal
-        onSave(savedPost, true);
+        // Directly schedule without an extra update that could revert status
+        const scheduledPost = await schedulePost(post.id);
+        console.log("[SCHEDULE] Response", scheduledPost);
+        // Notify parent with the scheduled post (status SCHEDULED)
+        onSave(scheduledPost, true);
       }
     } catch (err) {
       console.error("[SCHEDULE] Failed", err);
