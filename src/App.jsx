@@ -5260,7 +5260,9 @@ export default function App(){
           post={localPost}
           vault={vault}
           onSave={async (updatedData, closeAfterSave = true) => {
-            await updatePost(updatedData.id, updatedData);
+            if (updatedData.status !== 'SCHEDULED') {
+                await updatePost(updatedData.id, updatedData);
+            }
             if (closeAfterSave) {
               setSelectedPost(null);
             }
