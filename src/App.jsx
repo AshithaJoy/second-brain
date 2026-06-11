@@ -2940,8 +2940,9 @@ export default function App(){
     </div>
   );
 
-  const calendarView = (
+  const calendarView = () => (
     <div className={calFade?"cal-grid cal-fade":"cal-grid cal-show"} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:22}}>
+      {console.log("Rendering Calendar")}
       {DAYS.map(d=><div key={d} style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",paddingBottom:6,letterSpacing:0.3}}>{d}</div>)}
       {cells.map((d,i)=>{
         const ds=d?toDateStr(new Date(calYear,calMonth,d)):null;
@@ -2960,8 +2961,9 @@ export default function App(){
     </div>
   );
 
-  const listView = (
+  const listView = () => (
     <div style={{display:"flex",flexDirection:"column",gap:24}}>
+      {console.log("Rendering List")}
       <div>
         <h4 style={{fontSize:14,color:"var(--accent-color)",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Publishing Pipeline</h4>
         {posts.filter(p => ["SCHEDULED", "PUBLISHING", "PUBLISHED"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No posts in pipeline.</div>}
@@ -3018,8 +3020,9 @@ export default function App(){
     </div>
   );
 
-  const historyView = (
+  const historyView = () => (
     <div style={{display:"flex",flexDirection:"column",gap:24}}>
+      {console.log("Rendering History")}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <div style={{display:"flex",gap:4}}>
           <button onClick={()=>setHistoryTab("Scheduled")} style={historyTab==="Scheduled"?S.activeTab:S.tab}>Scheduled</button>
@@ -3075,11 +3078,11 @@ export default function App(){
   function renderPlannerView() {
     switch(plannerView) {
       case "calendar":
-        return calendarView;
+        return calendarView();
       case "list":
-        return listView;
+        return listView();
       case "history":
-        return historyView;
+        return historyView();
       default:
         return null;
     }
