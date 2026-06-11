@@ -897,210 +897,6 @@ export default function App(){
   const [reelBreakdown, setReelBreakdown] = useState(null);
 
 
-  useEffect(() => {
-    async function init() {
-      try {
-        console.log("[App] Fetching initial user data...");
-        const serverDumps = await apiGetDumps();
-        if (serverDumps && serverDumps.length > 0) {
-          setDumps(serverDumps);
-          setActiveDumpId(serverDumps[0].id);
-        }
-
-        const serverPosts = await apiGetPosts();
-        if (serverPosts && serverPosts.length > 0) {
-          setPosts(serverPosts);
-        }
-
-        const serverCollabs = await apiGetCollabs();
-        if (serverCollabs && serverCollabs.length > 0) {
-          setCollabs(serverCollabs);
-        }
-
-        const serverShoots = await apiGetShoots();
-        if (serverShoots && serverShoots.length > 0) {
-          setShoots(serverShoots);
-        }
-
-        const serverBreakdowns = await apiGetBreakdowns();
-        if (serverBreakdowns && serverBreakdowns.length > 0) {
-          setReelBreakdown(serverBreakdowns[0]);
-        }
-
-        const serverBRolls = await apiGetBRolls();
-        if (serverBRolls) {
-          setVault(serverBRolls);
-        }
-
-        const serverJournal = await apiGetJournalEntries();
-        if (serverJournal) {
-          setJournal(serverJournal);
-          if (serverJournal.length > 0) {
-            setSelectedJournalId(prev => prev || serverJournal[0].id);
-          }
-        }
-      } catch (err) {
-        console.error("[App] Hydration failed:", err);
-      }
-    }
-    init();
-  }, []);
-
-  // Synchronize selection changes into local edit states
-  useEffect(() => {
-    if (selectedPost) {
-      setLocalPost(JSON.parse(JSON.stringify(selectedPost)));
-      setPostIsDirty(false);
-    } else {
-      setLocalPost(null);
-      setPostIsDirty(false);
-    }
-  }, [selectedPost]);
-
-  useEffect(() => {
-    const dump = dumps.find(d => d.id === activeDumpId);
-    if (dump) {
-      // Only reset localDump when the selected dump changes (not on every dumps update)
-      // This prevents in-progress edits being stomped when updateDump triggers setDumps
-      setLocalDump(prev => {
-        // If we're already editing this dump (prev exists and same id), keep edits
-        if (prev && prev.id === dump.id) return prev;
-        return JSON.parse(JSON.stringify(dump));
-      });
-      setDumpIsDirty(prev => (prev && dump.id === activeDumpId) ? prev : false);
-    } else {
-      setLocalDump(null);
-      setDumpIsDirty(false);
-    }
-      setSyncingState(false);
-
-      await handleFetchInstagramMedia();
-      await fetchInstagramIntelligence();
-
-      trackAnalyticsEvent("instagram_sync_completed", { postsCount: result.syncedPosts });
-      showToast("Instagram connected successfully and content analyzed!");
-      
-      // Auto redirect to dashboard view
-      setTab("instagram");
-    } catch (err) {
-      console.error("Auto sync error:", err);
-      const errorMsg = err.response?.data?.error || err.message || "Failed to auto sync";
-      setIgError(errorMsg);
-      setSyncingState(false);
-      setSyncStep(0);
-      trackAnalyticsEvent("instagram_sync_failed", { error: errorMsg });
-      showToast(`Auto-sync failed: ${errorMsg}`, "error");
-    }
-  };
-
-  // Path-based routing effect
-  useEffect(() => {
-    const path = window.location.pathname;
-    if (path === "/settings") {
-      setTab("settings");
-    } else if (path === "/instagram") {
-      setTab("instagram");
-    }
-  }, []);
-
-  // URL query parameter callback handling effect
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const mockConnect = params.get("instagram_mock_connect");
-    const connectSuccess = params.get("instagram_connect");
-    const connectError = params.get("instagram_error");
-
-    if (mockConnect === "true" || connectSuccess === "success") {
-      trackAnalyticsEvent("instagram_oauth_callback_received", { success: true, mock: mockConnect === "true" });
-      
-      // Clean query parameters from address bar
-      const newUrl = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, document.title, newUrl);
-      
-      showToast("Instagram account connected! Initializing auto sync...");
-      handleAutoSyncAfterConnection();
-    } else if (connectError || connectSuccess === "error") {
-      const errMsg = connectError || params.get("error_description") || "OAuth connection failed";
-      trackAnalyticsEvent("instagram_oauth_callback_received", { success: false, error: errMsg });
-      
-      const newUrl = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, document.title, newUrl);
-      
-      setIgError(errMsg);
-      showToast(`Instagram connection failed: ${errMsg}`, "error");
-      trackAnalyticsEvent("instagram_connection_failed", { error: errMsg });
-    }
-  }, []);
-
-  // Standard component mount/refresh updates hook
-  useEffect(() => {
-    if (user && user.instagramUsername) {
-      handleFetchInstagramMedia();
-      fetchInstagramIntelligence();
-    } else {
-      setIgMedia(null);
-      setIntelligence(null);
-    }
-  }, [user?.instagramUsername, fetchInstagramIntelligence]);
-const monthNav = (
-  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-    <div style={{display:"flex",alignItems:"center",gap:6}}>
-      <NavBtn onClick={() => navigateCal("prev")}>&lt;</NavBtn>
-      <span style={{fontSize:16,fontWeight:500,color:"var(--text-secondary)",minWidth:164,textAlign:"center"}}>{MONTHS[calMonth]} {calYear}</span>
-      <NavBtn onClick={() => navigateCal("next")}>&gt;</NavBtn>
-      {!todayInView && <NavBtn onClick={() => navigateCal("today")} active color="var(--accent-color)">today</NavBtn>}
-    </div>
-  </div>
-);
-
-
-  // Local Editing & Dirty States
-  const [plannerView, setPlannerView] = useState("calendar");
-  const [pubHistory, setPubHistory] = useState([]);
-  const [historyTab, setHistoryTab] = useState("Scheduled");
-
-  const [localPost, setLocalPost] = useState(null);
-  const [savingPost, setSavingPost] = useState(false);
-  const [postIsDirty, setPostIsDirty] = useState(false);
-
-  const [localDump, setLocalDump] = useState(null);
-  const [savingDump, setSavingDump] = useState(false);
-  const [dumpIsDirty, setDumpIsDirty] = useState(false);
-
-  const [localShoot, setLocalShoot] = useState(null);
-  const [savingShoot, setSavingShoot] = useState(false);
-  const [shootIsDirty, setShootIsDirty] = useState(false);
-
-  const [savingCollab, setSavingCollab] = useState(false);
-
-  function showToast(message, type = "success") {
-    setToast({ message, type });
-  }
-
-  // Enforce credits check on frontend
-  const useCredit = () => {
-    if (!user) return false;
-    if (user.credits <= 0) {
-      showToast("⚠️ Out of credits! Please top up your account.", "error");
-      return false;
-    }
-    useAuthStore.setState({
-      user: { ...user, credits: Math.max(0, user.credits - 1) }
-    });
-    return true;
-  };
-
-  function setTab(v) { setTabRaw(v); save(STORAGE.tab, v); }
-  const setTheme = v => { setThemeRaw(v); save(STORAGE.theme, v); };
-
-  // Selection state — declared BEFORE effects that depend on them
-  const [selectedPost, setSelectedPost] = useState(null);
-  const [selectedShootId, setSelectedShootId] = useState(null);
-  const [activeDumpId, setActiveDumpId] = useState(() => load(STORAGE.dumps, SEED_DUMPS)[0]?.id || null);
-
-  // Reel breakdown — declared here so it's available in init() effect below
-  const [reelBreakdown, setReelBreakdown] = useState(null);
-
 
   useEffect(() => {
     async function init() {
@@ -1206,98 +1002,7 @@ const monthNav = (
   const [calYear,  setCalYear]   = useState(getNow().getFullYear());
   const [calFade,  setCalFade]   = useState(false);
 
-            {d && (
-              <>
-                <div style={{fontSize:11,color:tod?"var(--accent-color)":"var(--text-muted)",fontWeight:tod?600:400,marginBottom:3}}>{d}</div>
-                {dp.map(p => (
-                  <div key={p.id} onClick={() => setSelectedPost(p)} style={{fontSize:10,padding:"2px 5px",borderRadius:6,marginBottom:2,cursor:"pointer",background:MOOD_COLORS[p.mood]+"22",color:MOOD_COLORS[p.mood],overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
-                    {TYPE_ICONS[p.type] || "•"} {p.title}
-                    {p.publishAt && (
-                      <span style={{display:"block",fontSize:9,color:"var(--accent-color)",marginTop:2}}>{new Date(p.publishAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                    )}
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
 
-  const listView = (
-    <div style={{display:"flex",flexDirection:"column",gap:24}}>
-      {/* List view placeholder – original list view JSX will be moved here later */}
-    </div>
-  );
-
-  const historyView = (
-    <div style={{display:"flex",flexDirection:"column",gap:24}}>
-      {/* Publishing History UI */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{display:"flex",gap:4}}>
-          <button onClick={()=>setHistoryTab("Scheduled")} style={historyTab==="Scheduled"?S.activeTab:S.tab}>Scheduled</button>
-          <button onClick={()=>setHistoryTab("Published")} style={historyTab==="Published"?S.activeTab:S.tab}>Published</button>
-          <button onClick={()=>setHistoryTab("Failed")} style={historyTab==="Failed"?S.activeTab:S.tab}>Failed</button>
-        </div>
-        <button onClick={async()=>{const hist=await apiGetPublishingHistory();setPubHistory(hist);}} style={S.ghost}>Refresh</button>
-      </div>
-      <div>
-        {pubHistory.filter(j =>
-          historyTab==="Scheduled"
-            ? ["PENDING","PROCESSING"].includes(j.status)
-            : historyTab==="Published"
-            ? j.status==="COMPLETED"
-            : j.status==="FAILED"
-        ).length===0 && (
-          <div style={{fontSize:12,color:"var(--text-muted)",padding:"20px 0"}}>No {historyTab.toLowerCase()} jobs found.</div>
-        ))}
-        {pubHistory.filter(j =>
-          historyTab==="Scheduled"
-            ? ["PENDING","PROCESSING"].includes(j.status)
-            : historyTab==="Published"
-            ? j.status==="COMPLETED"
-            : j.status==="FAILED"
-        ).map(j=(
-          <div key={j.id} style={{...S.card,marginBottom:10,padding:"14px 18px",display:"flex",alignItems:"center",gap:16}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,color:"var(--text-primary)",fontWeight:600}}>{j.post?.title||"Unknown Post"}</div>
-              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>Publish At: {new Date(j.publishAt).toLocaleString()}</div>
-              {j.lastError && (
-                <div style={{fontSize:11,color:"#f0a090",marginTop:4,background:"rgba(240,160,144,0.1)",padding:"4px 8px",borderRadius:4}}>
-                  Error: {j.lastError} (Attempts: {j.attempts})
-                </div>
-              )}
-              {j.instagramMediaId && (
-                <div style={{fontSize:11,color:"#a8c8a0",marginTop:4}}>Media ID: {j.instagramMediaId}</div>
-              )}
-            </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
-              <Tag label={j.status} color={j.status==="COMPLETED"?"#a8c8a0":j.status==="FAILED"?"#f0a090":"#e2c792"} />
-              {j.status==="FAILED" && (
-                <button onClick={async()=>{try{await apiRetryPublishingJob(j.id);showToast("Job retry queued successfully!");const hist=await apiGetPublishingHistory();setPubHistory(hist);}catch(err){showToast("Failed to retry job","error");}}} style={{...S.ghost,fontSize:11,color:"var(--accent-color)",padding:"4px 12px",border:"1px solid var(--accent-light)",borderRadius:12}}>
-                  Retry Publish
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  function renderPlannerView() {
-    switch(plannerView) {
-      case "calendar":
-        return calendarView;
-      case "list":
-        return listView;
-      case "history":
-        return historyView;
-      default:
-        return null;
-    }
-  }
   const calAnimRef = useRef(false);
 
 
@@ -3224,200 +2929,163 @@ const monthNav = (
                 </div>
               );
 
-  return(
-    <div className="main-app-content" data-test-id="workspace-dashboard" data-testid="workspace-dashboard" style={{background:"var(--bg-primary)",minHeight:"100vh",color:"var(--text-primary)",transition:"all 0.3s"}}>
-      <style>{`
-        button:hover { opacity: 0.78; }
-        select { appearance: none; -webkit-appearance: none; }
-        .sparkline {
-          stroke-dasharray: 1000;
-          stroke-dashoffset: 1000;
-          animation: drawSparkline 1.5s ease-out forwards;
-        }
-        @keyframes drawSparkline {
-          to { stroke-dashoffset: 0; }
-        }
-      `}</style>
+  const monthNav = (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <NavBtn onClick={() => navigateCal("prev")}>&lt;</NavBtn>
+        <span style={{fontSize:16,fontWeight:500,color:"var(--text-secondary)",minWidth:164,textAlign:"center"}}>{MONTHS[calMonth]} {calYear}</span>
+        <NavBtn onClick={() => navigateCal("next")}>&gt;</NavBtn>
+        {!todayInView && <NavBtn onClick={() => navigateCal("today")} active color="var(--accent-color)">today</NavBtn>}
+      </div>
+    </div>
+  );
 
-      {/* HEADER */}
-      <div style={{padding:"22px 28px 0",borderBottom:"1px solid var(--border-color)"}}>
-        <div className="header-row">
-          <div>
-            <h1 style={{fontSize:22,fontWeight:400,letterSpacing:-0.5,color:"var(--text-primary)",margin:0}}>second brain ✦</h1>
-            <p style={{fontSize:12,color:"var(--text-secondary)",marginTop:3,fontStyle:"italic",margin:"3px 0 0"}}>for creators rebuilding in real time</p>
+  const calendarView = (
+    <div className={calFade?"cal-grid cal-fade":"cal-grid cal-show"} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:22}}>
+      {DAYS.map(d=><div key={d} style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",paddingBottom:6,letterSpacing:0.3}}>{d}</div>)}
+      {cells.map((d,i)=>{
+        const ds=d?toDateStr(new Date(calYear,calMonth,d)):null;
+        const tod=ds&&isToday(ds);
+        const dp=postsOnDay(d);
+        return(
+          <div key={i} style={{minHeight:66,borderRadius:12,padding:"5px 6px",background:d?(tod?"var(--accent-light)":"var(--bg-secondary)"):"transparent",border:d?(tod?"1.5px solid var(--border-focus)":"1px solid var(--border-color)"):"none"}}>
+            {d&&<><div style={{fontSize:11,color:tod?"var(--accent-color)":"var(--text-muted)",fontWeight:tod?600:400,marginBottom:3}}>{d}</div>
+            {dp.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{fontSize:10,padding:"2px 5px",borderRadius:6,marginBottom:2,cursor:"pointer",background:MOOD_COLORS[p.mood]+"22",color:MOOD_COLORS[p.mood],overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>
+              {TYPE_ICONS[p.type] || "•"} {p.title}
+              {p.publishAt && <span style={{display:"block",fontSize:9,color:"var(--accent-color)",marginTop:2}}>{new Date(p.publishAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>}
+            </div>)}</>}
           </div>
-          
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            {user && (
-              <>
-                <span style={{
-                  fontSize: 11,
-                  color: (user.credits || 0) > 0 ? "var(--text-primary)" : "#f0a090",
-                  background: (user.credits || 0) > 0 ? "rgba(168, 200, 160, 0.15)" : "rgba(240, 160, 144, 0.15)",
-                  border: `1px solid ${(user.credits || 0) > 0 ? "var(--accent-light)" : "#f0a090"}`,
-                  padding: "4px 10px",
-                  borderRadius: "12px",
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px"
-                }}>
-                  ⚡ Credits: {user.credits || 0} / 5
-                </span>
-                <span style={{
-                  fontSize: 11,
-                  color: "var(--text-secondary)",
-                  background: "var(--border-color)",
-                  padding: "4px 10px",
-                  borderRadius: "12px",
-                  fontWeight: 500
-                }}>
-                  ✨ {user.creatorName}
-                </span>
-              </>
-            )}
-            {/* Theme Toggle */}
-            <button onClick={()=>setTheme(theme==="light"?"dark":"light")} style={{
-              background:"none",border:"1px solid var(--border-color)",borderRadius:30,padding:"6px 12px",
-              cursor:"pointer",fontSize:11,color:"var(--text-secondary)"
-            }}>
-              {theme==="light"?"🎬 pro edit bay":"☀️ creator studio"}
-            </button>
-            {user && (
-              <button onClick={logout} style={{
-                background:"none",border:"1px solid #f0a090",borderRadius:30,padding:"6px 12px",
-                cursor:"pointer",fontSize:11,color:"#f0a090",fontWeight: 500
-              }}>
-                Logout
-              </button>
-            )}
-            <p style={{fontSize:12,color:"var(--accent-color)",fontStyle:"italic",textAlign:"right",letterSpacing:0.3,maxWidth:220,lineHeight:1.4}}>{quote}</p>
-          </div>
-        </div>
+        )
+      })}
+    </div>
+  );
 
-        {/* Tab Navigation */}
-        <div className="tab-navigation-bar">
-          {TABS.map(([id,label])=>(
-            <button key={id} data-test-id={`tab-${id}`} onClick={()=>setTab(id)} style={{
-              padding:"10px 18px",fontSize:13,cursor:"pointer",border:"none",fontFamily:"inherit",
-              borderBottom:tab===id?"2px solid var(--border-focus)":"2px solid transparent",
-              background:"transparent",color:tab===id?"var(--text-primary)":"var(--text-muted)",
-              transition:"all 0.18s",fontWeight:tab===id?500:400,whiteSpace:"nowrap",
-            }}>{label}</button>
-          ))}
-        </div>
+  const listView = (
+    <div style={{display:"flex",flexDirection:"column",gap:24}}>
+      <div>
+        <h4 style={{fontSize:14,color:"var(--accent-color)",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Publishing Pipeline</h4>
+        {posts.filter(p => ["SCHEDULED", "PUBLISHING", "PUBLISHED"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No posts in pipeline.</div>}
+        {posts.filter(p => ["SCHEDULED", "PUBLISHING", "PUBLISHED"].includes(p.status)).sort((a,b)=>new Date(b.publishAt||b.date||0).getTime() - new Date(a.publishAt||a.date||0).getTime()).map(p => (
+          <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:600}}>{p.title}</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                {p.status === "PUBLISHED" ? "Published on" : "Scheduled for"}: {p.publishAt ? new Date(p.publishAt).toLocaleString() : "TBD"}
+              </div>
+            </div>
+            <Tag label={p.status} color={STATUS_COLORS[p.status] || "var(--accent-color)"}/>
+            <Tag label={p.type} color="#ccc" />
+          </div>
+        ))}
+      </div>
+      
+      <div>
+        <h4 style={{fontSize:14,color:"orange",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Production</h4>
+        {posts.filter(p => ["REVIEW", "APPROVED"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No posts in production.</div>}
+        {posts.filter(p => ["REVIEW", "APPROVED"].includes(p.status)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(p => (
+          <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,color:"var(--text-primary)"}}>{p.title}</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                {isToday(p.date)?"today ✧":friendlyDate(p.date)} · {p.mood}
+              </div>
+            </div>
+            <Tag label={p.status} color={STATUS_COLORS[p.status]}/>
+            <Tag label={p.type} color="#ccc" />
+          </div>
+        ))}
       </div>
 
-      <div style={{padding:"24px 28px"}}>
-        {user && !profileStatus.complete && skipWizard && (
-          <div data-test-id="creator-dna-banner" style={{
-                              <span style={{fontSize:10, textTransform:"uppercase", color:"var(--text-muted)", display:"block", marginBottom:4, fontWeight:600}}>Billed To</span>
-                              <strong>{c.brand}</strong><br />
-                              {c.contactName && <>{c.contactName}<br /></>}
-                              {c.email && <>{c.email}<br /></>}
-                              Platform: {c.platform}
-                            </div>
-                          </div>
+      <div>
+        <h4 style={{fontSize:14,color:"var(--text-secondary)",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Ideation</h4>
+        {posts.filter(p => ["DRAFT"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No draft posts.</div>}
+        {posts.filter(p => ["DRAFT"].includes(p.status)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(p => (
+          <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,color:"var(--text-primary)"}}>{p.title}</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                {isToday(p.date)?"today ✧":friendlyDate(p.date)} · {p.mood}
+              </div>
+            </div>
+            <Tag label={p.status} color={STATUS_COLORS[p.status]}/>
+            <Tag label={p.type} color="#ccc" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
-                          <div className="form-grid-2" style={{gap:20, marginBottom:30, fontSize:12, background:"var(--bg-primary)", padding:12, borderRadius:10, border:"1px solid var(--border-color)"}}>
-                            <div>
-                              <strong>Date of Issue:</strong> {todayStr}
-                            </div>
-                            <div>
-                              <strong>Payment Due:</strong> {c.dueDate ? friendlyDate(c.dueDate) : "Upon Receipt"}
-                            </div>
-                          </div>
-
-                          {/* Line Items Table */}
-                          <table style={{width:"100%", borderCollapse:"collapse", fontSize:13, marginBottom:25}}>
-                            <thead>
-                              <tr style={{borderBottom:"2px solid var(--text-primary)", textAlign:"left"}}>
-                                <th style={{padding:"8px 0", fontWeight:600}}>Deliverable Description</th>
-                                <th style={{padding:"8px 0", fontWeight:600, textAlign:"center"}}>Qty</th>
-                                <th style={{padding:"8px 0", fontWeight:600, textAlign:"right"}}>Rate</th>
-                                <th style={{padding:"8px 0", fontWeight:600, textAlign:"right"}}>Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {cRates.itemsBreakdown.map((item, idx) => (
-                                <tr key={idx} style={{borderBottom:"1px solid var(--border-color)"}}>
-                                  <td style={{padding:"12px 0"}}>
-                                    <div>{item.name}</div>
-                                    {item.discount > 0 && <span style={{fontSize:10, color:"#a8c8a0", fontStyle:"italic"}}>Reels pair discount applied</span>}
-                                  </td>
-                                  <td style={{padding:"12px 0", textAlign:"center"}}>{item.qty}</td>
-                                  <td style={{padding:"12px 0", textAlign:"right"}}>₹{item.rate}</td>
-                                  <td style={{padding:"12px 0", textAlign:"right"}}>
-                                    {item.discount > 0 ? (
-                                      <div>
-                                        <span style={{textDecoration:"line-through", color:"var(--text-muted)", fontSize:11, marginRight:6}}>₹{item.qty * item.rate}</span>
-                                        <span>₹{item.total}</span>
-                                      </div>
-                                    ) : (
-                                      <span>₹{item.total}</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-
-                              {/* Custom manual adjustments to match c.negotiatedAmount */}
-                              {c.negotiatedAmount !== undefined && c.negotiatedAmount !== null && c.negotiatedAmount !== "" && Number(c.negotiatedAmount) !== cRates.total && (
-                                <tr style={{borderBottom:"1px solid var(--border-color)", fontStyle:"italic", color:"var(--text-secondary)"}}>
-                                  <td style={{padding:"12px 0"}} colSpan={3}>
-                                    Negotiated Client Adjustment
-                                  </td>
-                                  <td style={{padding:"12px 0", textAlign:"right"}}>
-                                    {Number(c.negotiatedAmount) > cRates.total ? "+" : "-"}₹{Math.abs(Number(c.negotiatedAmount) - cRates.total)}
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-
-                          {/* Totals Section */}
-                          <div style={{display:"flex", justifyContent:"flex-end", fontSize:13, marginBottom:20}}>
-                            <div style={{width:240, display:"flex", flexDirection:"column", gap:6}}>
-                              <div style={{display:"flex", justifyContent:"space-between"}}>
-                                <span>Subtotal</span>
-                                <span>₹{cRates.subtotal}</span>
-                              </div>
-                              {cRates.discount > 0 && (
-                                <div style={{display:"flex", justifyContent:"space-between", color:"#a8c8a0"}}>
-                                  <span>Reels Discount</span>
-                                  <span>-₹{cRates.discount}</span>
-                                </div>
-                              )}
-                              {c.negotiatedAmount !== undefined && c.negotiatedAmount !== null && c.negotiatedAmount !== "" && Number(c.negotiatedAmount) !== cRates.total && (
-                                <div style={{display:"flex", justifyContent:"space-between", color:"var(--text-secondary)", fontStyle:"italic"}}>
-                                  <span>Brand Adjustment</span>
-                                  <span>
-                                    {Number(c.negotiatedAmount) > cRates.total ? "+" : "-"}₹{Math.abs(Number(c.negotiatedAmount) - cRates.total)}
-                                  </span>
-                                </div>
-                              )}
-                              <div style={{display:"flex", justifyContent:"space-between", borderTop:"2px solid var(--text-primary)", paddingTop:8, marginTop:4, fontSize:16, fontWeight:700, color:"var(--text-primary)"}}>
-                                <span>Total Due</span>
-                                <span>₹{c.negotiatedAmount !== undefined && c.negotiatedAmount !== "" ? c.negotiatedAmount : cRates.total}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Footer terms */}
-                          <div style={{borderTop:"1px solid var(--border-color)", paddingTop:15, marginTop:30, fontSize:11, color:"var(--text-muted)", textAlign:"center", lineHeight:1.5}}>
-                            <p style={{fontWeight:600, color:"var(--text-secondary)", marginBottom:4}}>Payment Terms & Instructions</p>
-                            <p>Please send payments via Bank Transfer or UPI details shared separately.</p>
-                            <p style={{marginTop:8, fontStyle:"italic"}}>Thank you for working with independent creators. Let's make something beautiful.</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                <div style={{textAlign:"center",padding:"80px 20px",color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:16,border:"1px solid var(--border-color)"}}>
-                  <div style={{fontSize:32,opacity:0.2,marginBottom:12}}>🤝</div>
-                  <p style={{fontStyle:"italic",fontSize:15,marginBottom:4}}>creative work deserves organization too</p>
-                  <p style={{fontSize:12,maxWidth:320,margin:"0 auto"}}>Keep relationships calm and rates documented. Soft systems still count as systems.</p>
+  const historyView = (
+    <div style={{display:"flex",flexDirection:"column",gap:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{display:"flex",gap:4}}>
+          <button onClick={()=>setHistoryTab("Scheduled")} style={historyTab==="Scheduled"?S.activeTab:S.tab}>Scheduled</button>
+          <button onClick={()=>setHistoryTab("Published")} style={historyTab==="Published"?S.activeTab:S.tab}>Published</button>
+          <button onClick={()=>setHistoryTab("Failed")} style={historyTab==="Failed"?S.activeTab:S.tab}>Failed</button>
+        </div>
+        <button onClick={async()=>{const hist=await apiGetPublishingHistory();setPubHistory(hist);}} style={S.ghost}>Refresh</button>
+      </div>
+      <div>
+        {pubHistory.filter(j =>
+          historyTab==="Scheduled"
+            ? ["PENDING","PROCESSING"].includes(j.status)
+            : historyTab==="Published"
+            ? j.status==="COMPLETED"
+            : j.status==="FAILED"
+        ).length===0 && (
+          <div style={{fontSize:12,color:"var(--text-muted)",padding:"20px 0"}}>No {historyTab.toLowerCase()} jobs found.</div>
+        )}
+        {pubHistory.filter(j =>
+          historyTab==="Scheduled"
+            ? ["PENDING","PROCESSING"].includes(j.status)
+            : historyTab==="Published"
+            ? j.status==="COMPLETED"
+            : j.status==="FAILED"
+        ).map(j => (
+          <div key={j.id} style={{...S.card,marginBottom:10,padding:"14px 18px",display:"flex",alignItems:"center",gap:16}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,color:"var(--text-primary)",fontWeight:600}}>{j.post?.title||"Unknown Post"}</div>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>Publish At: {new Date(j.publishAt).toLocaleString()}</div>
+              {j.lastError && (
+                <div style={{fontSize:11,color:"#f0a090",marginTop:4,background:"rgba(240,160,144,0.1)",padding:"4px 8px",borderRadius:4}}>
+                  Error: {j.lastError} (Attempts: {j.attempts})
                 </div>
-              );
+              )}
+              {j.instagramMediaId && (
+                <div style={{fontSize:11,color:"#a8c8a0",marginTop:4}}>Media ID: {j.instagramMediaId}</div>
+              )}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+              <Tag label={j.status} color={j.status==="COMPLETED"?"#a8c8a0":j.status==="FAILED"?"#f0a090":"#e2c792"} />
+              {j.status==="FAILED" && (
+                <button onClick={async()=>{try{await apiRetryPublishingJob(j.id);showToast("Job retry queued successfully!");const hist=await apiGetPublishingHistory();setPubHistory(hist);}catch(err){showToast("Failed to retry job","error");}}} style={{...S.ghost,fontSize:11,color:"var(--accent-color)",padding:"4px 12px",border:"1px solid var(--accent-light)",borderRadius:12}}>
+                  Retry Publish
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  function renderPlannerView() {
+    switch(plannerView) {
+      case "calendar":
+        return calendarView;
+      case "list":
+        return listView;
+      case "history":
+        return historyView;
+      default:
+        return null;
+    }
+  }
+
+
 
   return(
     <div className="main-app-content" data-test-id="workspace-dashboard" data-testid="workspace-dashboard" style={{background:"var(--bg-primary)",minHeight:"100vh",color:"var(--text-primary)",transition:"all 0.3s"}}>
@@ -3545,158 +3213,20 @@ const monthNav = (
         {/* 1. CONTENT PLANNER */}
         {tab==="planner"&&(
           <div className="card-in pane-planner">
-  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-    <div style={{display:"flex",alignItems:"center",gap:16}}>
-      <span style={S.label}>Content Planner</span>
-    </div>
-    <button style={S.btn("var(--accent-color)")} onClick={async () =>{}}>+ new post</button>
-  </div>
-  <div style={{display:"flex",gap:4,background:"var(--bg-primary)",padding:4,borderRadius:8,border:"1px solid var(--border-color)"}}>
-    <button onClick={()=>setPlannerView("calendar")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="calendar"?"var(--bg-secondary)":"transparent",color:plannerView==="calendar"?"var(--text-primary)":"var(--text-muted)"}}>Calendar</button>
-    <button onClick={()=>setPlannerView("list")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="list"?"var(--bg-secondary)":"transparent",color:plannerView==="list"?"var(--text-primary)":"var(--text-muted)"}}>List</button>
-  </div>
-   {plannerView === "calendar" && monthNav}
-  {renderPlannerView()}
-</div>
-                        {TYPE_ICONS[p.type] || "•"} {p.title}
-                        {p.publishAt && <span style={{display:"block",fontSize:9,color:"var(--accent-color)",marginTop:2}}>{new Date(p.publishAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>}
-                      </div>)}</>}
-                    </div>
-                  );})}
-                </div>
-              </>
-            )}
-                      color: historyTab === ht ? "var(--text-primary)" : "var(--text-muted)",
-                      border: historyTab === ht ? "1px solid var(--border-focus)" : "1px solid transparent"
-                    }}>
-                      {ht}
-                    </button>
-                  ))}
-                </div>
-
-
-{/* Duplicate Publishing History block removed */} 
-                    historyTab === "Scheduled" ? ["PENDING", "PROCESSING"].includes(j.status) :
-                    historyTab === "Published" ? j.status === "COMPLETED" :
-                    j.status === "FAILED"
-                  ).length === 0 && (
-                    <div style={{fontSize:12,color:"var(--text-muted)", padding:"20px 0"}}>
-                      No {historyTab.toLowerCase()} jobs found.
-                    </div>
-                  )}
-
-                  {pubHistory.filter(j => 
-                    historyTab === "Scheduled" ? ["PENDING", "PROCESSING"].includes(j.status) :
-                    historyTab === "Published" ? j.status === "COMPLETED" :
-                    j.status === "FAILED"
-                  ).map(j => (
-                    <div key={j.id} style={{...S.card,marginBottom:10,padding:"14px 18px",display:"flex",alignItems:"center",gap:16}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:14,color:"var(--text-primary)",fontWeight:600}}>{j.post?.title || "Unknown Post"}</div>
-                        <div style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>
-                          Publish At: {new Date(j.publishAt).toLocaleString()}
-                        </div>
-                        {j.lastError && (
-                          <div style={{fontSize:11,color:"#f0a090",marginTop:4, background:"rgba(240, 160, 144, 0.1)", padding:"4px 8px", borderRadius:4}}>
-                            Error: {j.lastError} (Attempts: {j.attempts})
-                          </div>
-                        )}
-                        {j.instagramMediaId && (
-                          <div style={{fontSize:11,color:"#a8c8a0",marginTop:4}}>
-                            Media ID: {j.instagramMediaId}
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div style={{display:"flex", flexDirection:"column", alignItems:"flex-end", gap:8}}>
-                        <Tag label={j.status} color={
-                          j.status === "COMPLETED" ? "#a8c8a0" :
-                          j.status === "FAILED" ? "#f0a090" :
-                          "#e2c792"
-                        } />
-                        
-                        {j.status === "FAILED" && (
-                          <button 
-                            onClick={async () => {
-                              try {
-                                await apiRetryPublishingJob(j.id);
-                                showToast("Job retry queued successfully!");
-                                const hist = await apiGetPublishingHistory();
-                                setPubHistory(hist);
-                              } catch(err) {
-                                showToast("Failed to retry job", "error");
-                              }
-                            }}
-                            style={{...S.ghost, fontSize:11, color:"var(--accent-color)", padding:"4px 12px", border:"1px solid var(--accent-light)", borderRadius:12}}
-                          >
-                            Retry Publish
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:16}}>
+                <span style={S.label}>Content Planner</span>
+                <div style={{display:"flex",gap:4,background:"var(--bg-primary)",padding:4,borderRadius:8,border:"1px solid var(--border-color)"}}>
+                  <button onClick={()=>setPlannerView("calendar")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="calendar"?"var(--bg-secondary)":"transparent",color:plannerView==="calendar"?"var(--text-primary)":"var(--text-muted)"}}>Calendar</button>
+                  <button onClick={()=>setPlannerView("list")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="list"?"var(--bg-secondary)":"transparent",color:plannerView==="list"?"var(--text-primary)":"var(--text-muted)"}}>List</button>
+                  <button onClick={()=>setPlannerView("history")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="history"?"var(--bg-secondary)":"transparent",color:plannerView==="history"?"var(--text-primary)":"var(--text-muted)"}}>Publishing History</button>
                 </div>
               </div>
-            )}
+              <button style={S.btn("var(--accent-color)")} onClick={async ()=>{const np=await createNewPost({title:"untitled post",type:"REEL",status:"DRAFT",mood:"soft"});setSelectedPost(np);}}>+ new post</button>
+            </div>
+            {plannerView === "calendar" && monthNav}
+            {renderPlannerView()}
 
-            
-              
-                <div>
-                  <h4 style={{fontSize:14,color:"var(--accent-color)",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Publishing Pipeline</h4>
-                  {posts.filter(p => ["SCHEDULED", "PUBLISHING", "PUBLISHED"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No posts in pipeline.</div>}
-                  {posts.filter(p => ["SCHEDULED", "PUBLISHING", "PUBLISHED"].includes(p.status)).sort((a,b)=>new Date(b.publishAt||b.date||0).getTime() - new Date(a.publishAt||a.date||0).getTime()).map(p => (
-                    <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
-                      <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,color:"var(--text-primary)",fontWeight:600}}>{p.title}</div>
-                        <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
-                          {p.status === "PUBLISHED" ? "Published on" : "Scheduled for"}: {p.publishAt ? new Date(p.publishAt).toLocaleString() : "TBD"}
-                        </div>
-                      </div>
-                      <Tag label={p.status} color={STATUS_COLORS[p.status] || "var(--accent-color)"}/>
-                      <Tag label={p.type} color="#ccc" />
-                    </div>
-                  ))}
-                </div>
-                
-                <div>
-                  <h4 style={{fontSize:14,color:"orange",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Production</h4>
-                  {posts.filter(p => ["REVIEW", "APPROVED"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No posts in production.</div>}
-                  {posts.filter(p => ["REVIEW", "APPROVED"].includes(p.status)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(p => (
-                    <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
-                      <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,color:"var(--text-primary)"}}>{p.title}</div>
-                        <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
-                          {isToday(p.date)?"today ✧":friendlyDate(p.date)} · {p.mood}
-                        </div>
-                      </div>
-                      <Tag label={p.status} color={STATUS_COLORS[p.status]}/>
-                      <Tag label={p.type} color="#ccc" />
-                    </div>
-                  ))}
-                </div>
-
-                <div>
-                  <h4 style={{fontSize:14,color:"var(--text-secondary)",borderBottom:"1px solid var(--border-color)",paddingBottom:8,marginBottom:12}}>Ideation</h4>
-                  {posts.filter(p => ["DRAFT"].includes(p.status)).length === 0 && <div style={{fontSize:12,color:"var(--text-muted)"}}>No draft posts.</div>}
-                  {posts.filter(p => ["DRAFT"].includes(p.status)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(p => (
-                    <div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
-                      <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,color:"var(--text-primary)"}}>{p.title}</div>
-                        <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
-                          {isToday(p.date)?"today ✧":friendlyDate(p.date)} · {p.mood}
-                        </div>
-                      </div>
-                      <Tag label={p.status} color={STATUS_COLORS[p.status]}/>
-                      <Tag label={p.type} color="#ccc" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
             {/* Kept "all posts" at bottom for completeness (optional) */}
             <div style={{marginTop:32}}><span style={{...S.label,marginBottom:10}}>all posts history</span>
               {["PUBLISHED", "FAILED", "ARCHIVED"].map(status=>{
