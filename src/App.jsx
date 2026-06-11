@@ -3216,18 +3216,25 @@ export default function App(){
         {/* 1. CONTENT PLANNER */}
         {tab==="planner"&&(
           <div className="card-in pane-planner">
+            {/* Row 1: Title and New Post */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div style={{display:"flex",alignItems:"center",gap:16}}>
-                <span style={S.label}>Content Planner</span>
-                <div style={{display:"flex",gap:4,background:"var(--bg-primary)",padding:4,borderRadius:8,border:"1px solid var(--border-color)"}}>
-                  <button onClick={()=>setPlannerView("calendar")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="calendar"?"var(--bg-secondary)":"transparent",color:plannerView==="calendar"?"var(--text-primary)":"var(--text-muted)"}}>Calendar</button>
-                  <button onClick={()=>setPlannerView("list")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="list"?"var(--bg-secondary)":"transparent",color:plannerView==="list"?"var(--text-primary)":"var(--text-muted)"}}>List</button>
-                  <button onClick={()=>setPlannerView("history")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="history"?"var(--bg-secondary)":"transparent",color:plannerView==="history"?"var(--text-primary)":"var(--text-muted)"}}>Publishing History</button>
-                </div>
-              </div>
-              <button style={S.btn("var(--accent-color)")} onClick={async ()=>{const np=await createNewPost({title:"untitled post",type:"REEL",status:"DRAFT",mood:"soft"});setSelectedPost(np);}}>+ new post</button>
+              <span style={S.label}>Content Planner</span>
+              <button style={S.btn("var(--accent-color)")} onClick={async()=>{const np=await createNewPost({title:"untitled post",type:"REEL",status:"DRAFT",mood:"soft"});setSelectedPost(np);}}>
+                + new post
+              </button>
             </div>
-            {plannerView === "calendar" && monthNav}
+            <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:20}}>
+              <div style={{display:"flex",gap:4,background:"var(--bg-primary)",padding:4,borderRadius:8,border:"1px solid var(--border-color)"}}>
+                <button onClick={()=>setPlannerView("calendar")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="calendar"?"var(--bg-secondary)":"transparent",color:plannerView==="calendar"?"var(--text-primary)":"var(--text-muted)"}}>Calendar</button>
+                <button onClick={()=>setPlannerView("list")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="list"?"var(--bg-secondary)":"transparent",color:plannerView==="list"?"var(--text-primary)":"var(--text-muted)"}}>List</button>
+                <button onClick={()=>setPlannerView("history")} style={{...S.ghost,padding:"4px 12px",borderRadius:6,background:plannerView==="history"?"var(--bg-secondary)":"transparent",color:plannerView==="history"?"var(--text-primary)":"var(--text-muted)"}}>Publishing History</button>
+              </div>
+            </div>
+            {plannerView === "calendar" && (
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:20}}>
+                {monthNav}
+              </div>
+            )}
             {renderPlannerView()}
 
             {/* Kept "all posts" at bottom for completeness (optional) */}
