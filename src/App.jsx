@@ -3236,22 +3236,6 @@ export default function App(){
               </div>
             )}
             {renderPlannerView()}
-
-            {/* Kept "all posts" at bottom for completeness (optional) */}
-            <div style={{marginTop:32}}><span style={{...S.label,marginBottom:10}}>all posts history</span>
-              {["PUBLISHED", "FAILED", "ARCHIVED"].map(status=>{
-                const group=posts.filter(p=>p.status===status).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
-                if(!group.length)return null;
-                return(<div key={status} style={{marginBottom:18}}>
-                  <div style={{fontSize:11,color:STATUS_COLORS[status],marginBottom:7,letterSpacing:0.5}}>{status==="PUBLISHED"?"released into the universe":status}</div>
-                  {group.map(p=><div key={p.id} onClick={()=>setSelectedPost(p)} style={{...S.card,marginBottom:6,cursor:"pointer",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,opacity:status==="ARCHIVED"?0.5:1}}>
-                    <span style={{fontSize:15,color:MOOD_COLORS[p.mood]}}>{TYPE_ICONS[p.type]}</span>
-                    <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,color:"var(--text-primary)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{p.title}</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>{isToday(p.date)?"today ✧":friendlyDate(p.date)} · {p.mood}{p.shootId?" · 🎬":""}</div></div>
-                    <Tag label={status==="PUBLISHED"?"released":status} color={STATUS_COLORS[status]}/>
-                  </div>)}
-                </div>);
-              })}
-            </div>
           </div>
         )}
 
