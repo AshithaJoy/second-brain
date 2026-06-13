@@ -40,10 +40,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (email, password) => {
     set({ loading: true });
     try {
+      console.log("[AuthStore] Login attempt for", email);
       const data = await apiLogin(email, password);
-      setToken(data.accessToken);
+      console.log("[AuthStore] Login response payload:", data);
       
-      const localProfile = getProfile(data.user.id);
+      const token = data.accessToken || data.token;
+      if (token) setToken(token);
+      
+      const localProfile = getProfile(data.user?.id);
       let userProfile = {
         ...data.user,
         creatorName: email.split("@")[0],
@@ -54,7 +58,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (localProfile) {
         userProfile = { ...userProfile, ...localProfile };
-      } else {
+      } else if (data.user?.id) {
         setProfile(data.user.id, {
           creatorName: userProfile.creatorName,
           niche: userProfile.niche,
@@ -63,8 +67,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
       }
       
-      set({ token: data.accessToken, user: userProfile, loading: false });
+      set({ token: token, user: userProfile, loading: false });
     } catch (err) {
+      console.error("[AuthStore] Login failed:", err);
       set({ loading: false });
       throw err;
     }
@@ -106,16 +111,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   register: async (creatorName, email, password) => {
     set({ loading: true });
     try {
-      const user = await apiRegister(email, password);
+      console.log("[AuthStore] Register attempt for", email);
+      const user = await apiRegister(creatorName, email, password);
+      console.log("[AuthStore] Register response payload:", user);
       // Persist profile context keys locally
-      setProfile(user.id, {
-        creatorName,
-        niche: "minimalist-productivity",
-        creatorStyle: "cinematic",
-        audienceType: "creators",
-      });
+      if (user?.id) {
+        setProfile(user.id, {
+          creatorName,
+          niche: "minimalist-productivity",
+          creatorStyle: "cinematic",
+          audienceType: "creators",
+        });
+      }
       set({ loading: false });
     } catch (err) {
+      console.error("[AuthStore] Register failed:", err);
       set({ loading: false });
       throw err;
     }

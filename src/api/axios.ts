@@ -16,6 +16,9 @@ export const api = axios.create({
 // Request interceptor to inject Authorization Bearer token from localStorage
 api.interceptors.request.use(
   (config) => {
+    if (config.url?.includes("/auth/")) {
+      console.log(`[Axios Request] ${config.method?.toUpperCase()} ${config.url}`, config.data ? JSON.parse(JSON.stringify(config.data)) : null);
+    }
     const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -29,10 +32,20 @@ api.interceptors.request.use(
 
 // Response interceptor for centralized API error handling and normalization
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config.url?.includes("/auth/")) {
+      console.log(`[Axios Response] ${response.config.method?.toUpperCase()} ${response.config.url} - Status ${response.status}`, response.data);
+    }
+    return response;
+  },
   (error) => {
     const status = error.response?.status;
     const url = error.config?.url || "";
+    
+    if (url.includes("/auth/")) {
+      console.error(`[Axios Error] ${error.config?.method?.toUpperCase()} ${url} - Status ${status}`, error.response?.data);
+    }
+    
     if ((status === 401 || status === 403) && !url.includes("/instagram")) {
       console.warn("[Axios Interceptor] Centralized session expiration. Forcing logout.");
       useAuthStore.getState().logout();
