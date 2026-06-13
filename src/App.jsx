@@ -18,7 +18,9 @@ import {
   getShoots as apiGetShoots,
   createShoot as apiCreateShoot,
   updateShoot as apiUpdateShoot,
-  deleteShoot as apiDeleteShoot
+  deleteShoot as apiDeleteShoot,
+  getPublishingHistory as apiGetPublishingHistory,
+  retryPublishingJob as apiRetryPublishingJob
 } from "./api/planner.api";
 import {
   getCollabs as apiGetCollabs,
@@ -913,6 +915,13 @@ export default function App(){
           setPosts(serverPosts);
         }
 
+        try {
+          const serverHistory = await apiGetPublishingHistory();
+          setPubHistory(serverHistory);
+        } catch (hErr) {
+          console.error("[App] Hydration failed to load publishing history:", hErr);
+        }
+
         const serverCollabs = await apiGetCollabs();
         if (serverCollabs && serverCollabs.length > 0) {
           setCollabs(serverCollabs);
@@ -946,6 +955,14 @@ export default function App(){
     }
     init();
   }, []);
+
+  // Refresh planner data automatically when switching to the planner tab
+  useEffect(() => {
+    if (tab === "planner") {
+      loadPosts();
+      loadPublishingHistory();
+    }
+  }, [tab]);
 
   // Synchronize selection changes into local edit states
   useEffect(() => {
@@ -1670,6 +1687,24 @@ export default function App(){
       }
     }
     setSelectedShootId(id);
+  };
+
+  const loadPosts = async () => {
+    try {
+      const serverPosts = await apiGetPosts();
+      setPosts(serverPosts);
+    } catch (err) {
+      console.error("[App] Failed to load posts:", err);
+    }
+  };
+
+  const loadPublishingHistory = async () => {
+    try {
+      const serverHistory = await apiGetPublishingHistory();
+      setPubHistory(serverHistory);
+    } catch (err) {
+      console.error("[App] Failed to load publishing history:", err);
+    }
   };
 
   const updatePost = async (id, patch) => {
@@ -5245,12 +5280,18 @@ export default function App(){
           key={localPost.id + "_" + (localPost.updatedAt || "") + "_" + (localPost.publishAt || "")}
           post={localPost}
           vault={vault}
+          showToast={showToast}
           onSave={async (updatedData, closeAfterSave = true) => {
-            if (updatedData.status !== 'SCHEDULED') {
-                await updatePost(updatedData.id, updatedData);
+            if (updatedData.status === 'SCHEDULED') {
+              setPosts(ps => ps.map(p => p.id === updatedData.id ? updatedData : p));
+              await loadPosts();
+              await loadPublishingHistory();
+            } else {
+              await updatePost(updatedData.id, updatedData);
             }
             if (closeAfterSave) {
               setSelectedPost(null);
+              setLocalPost(null);
             }
           }}
           onClose={() => {

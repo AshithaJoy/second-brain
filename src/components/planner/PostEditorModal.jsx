@@ -34,7 +34,7 @@ const parseLocalToUTC = (dateStr, timeStr) => {
   return d.toISOString();
 };
 
-export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
+export function PostEditorModal({ post, onSave, onClose, vault = [], showToast }) {
   const { user } = useAuthStore();
   const [form, setForm] = useState({
     title: post?.title || "",
@@ -51,6 +51,7 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
   });
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [schedulingError, setSchedulingError] = useState("");
+  const [isScheduling, setIsScheduling] = useState(false);
 
   const updateForm = (patch) => setForm(f => ({ ...f, ...patch }));
 
@@ -61,22 +62,38 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
   };
 
   const handleSchedule = async () => {
+    if (isScheduling) return;
+    setIsScheduling(true);
     setSchedulingError("");
-    console.log("[SCHEDULE] Starting", post?.id);
-    console.log("[SCHEDULE] Form state", form);
-    console.log("[SCHEDULE] PublishAt", parseLocalToUTC(form.publishAtDate, form.publishAtTime));
     try {
+      if (!form.publishAtDate || !form.publishAtTime) {
+        throw new Error("Publish date and time are required.");
+      }
       const publishAt = parseLocalToUTC(form.publishAtDate, form.publishAtTime);
       if (post?.id) {
-        // Directly schedule without an extra update that could revert status
+        // Save latest form changes via apiUpdatePost
+        await apiUpdatePost(post.id, {
+          ...form,
+          publishAt
+        });
+        
+        // Schedule post
         const scheduledPost = await schedulePost(post.id);
-        console.log("[SCHEDULE] Response", scheduledPost);
-        // Notify parent with the scheduled post (status SCHEDULED)
+        
+        if (showToast) {
+          showToast("Post scheduled successfully", "success");
+        }
         onSave(scheduledPost, true);
       }
     } catch (err) {
       console.error("[SCHEDULE] Failed", err);
-      setSchedulingError(err.response?.data?.error || err.message || "Failed to schedule");
+      const errMsg = err.response?.data?.error || err.message || "Failed to schedule";
+      setSchedulingError(errMsg);
+      if (showToast) {
+        showToast(errMsg, "error");
+      }
+    } finally {
+      setIsScheduling(false);
     }
   };
 
@@ -319,19 +336,23 @@ export function PostEditorModal({ post, onSave, onClose, vault = [] }) {
              {post?.id && (
               <button 
                 onClick={handleSchedule} 
-                disabled={healthScore !== 100}
+                disabled={healthScore !== 100 || isScheduling}
                 style={{ 
                   padding: "8px 16px", 
                   borderRadius: 8, 
                   border: "none", 
                   background: healthScore === 100 ? "var(--accent-color)" : "var(--border-color)", 
                   color: healthScore === 100 ? "#fff" : "var(--text-muted)", 
-                  cursor: healthScore === 100 ? "pointer" : "not-allowed", 
+                  cursor: (healthScore === 100 && !isScheduling) ? "pointer" : "not-allowed", 
                   fontWeight: "bold",
-                  opacity: healthScore === 100 ? 1 : 0.6
+                  opacity: (healthScore === 100 && !isScheduling) ? 1 : 0.6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8
                 }}
               >
-                Schedule for Publishing
+                {isScheduling && <span className="spinner"></span>}
+                {isScheduling ? "Scheduling..." : "Schedule for Publishing"}
               </button>
              )}
           </div>
