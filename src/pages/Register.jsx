@@ -28,7 +28,11 @@ export default function Register({ onSwitchToLogin }) {
       await register(creatorName, email, password);
       await login(email, password);
     } catch (err) {
-      setErrorMsg(err.response?.data?.error || err.response?.data?.message || "Registration failed");
+      if (err.message === "Network Error") {
+        setErrorMsg("Server is currently offline. Please try again later.");
+      } else {
+        setErrorMsg(err.response?.data?.error || err.response?.data?.message || "Registration failed");
+      }
     }
   };
 
