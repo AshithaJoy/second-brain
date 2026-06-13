@@ -3055,6 +3055,22 @@ export default function App(){
     </div>
   );
 
+  const getMappedStatus = (status) => {
+    switch (status) {
+      case "PENDING":
+        return { label: "Scheduled", color: "#e2c792" };
+      case "PROCESSING":
+        return { label: "Processing", color: "#88b8f8" };
+      case "COMPLETED":
+        return { label: "Published", color: "#a8c8a0" };
+      case "FAILED":
+      case "STUCK":
+        return { label: "Failed", color: "#f0a090" };
+      default:
+        return { label: status, color: "#cccccc" };
+    }
+  };
+
   const historyView = () => (
     <div style={{display:"flex",flexDirection:"column",gap:24}}>
       {console.log("Rendering History")}
@@ -3072,40 +3088,51 @@ export default function App(){
             ? ["PENDING","PROCESSING"].includes(j.status)
             : historyTab==="Published"
             ? j.status==="COMPLETED"
-            : j.status==="FAILED"
+            : ["FAILED","STUCK"].includes(j.status)
         ).length===0 && (
-          <div style={{fontSize:12,color:"var(--text-muted)",padding:"20px 0"}}>No {historyTab.toLowerCase()} jobs found.</div>
+          <div style={{fontSize:12,color:"var(--text-muted)",padding:"20px 0",textAlign:"center"}}>
+            {historyTab==="Scheduled" && "No scheduled jobs"}
+            {historyTab==="Published" && "No published jobs"}
+            {historyTab==="Failed" && "No failed jobs"}
+          </div>
         )}
         {pubHistory.filter(j =>
           historyTab==="Scheduled"
             ? ["PENDING","PROCESSING"].includes(j.status)
             : historyTab==="Published"
             ? j.status==="COMPLETED"
-            : j.status==="FAILED"
-        ).map(j => (
-          <div key={j.id} style={{...S.card,marginBottom:10,padding:"14px 18px",display:"flex",alignItems:"center",gap:16}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,color:"var(--text-primary)",fontWeight:600}}>{j.post?.title||"Unknown Post"}</div>
-              <div style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>Publish At: {new Date(j.publishAt).toLocaleString()}</div>
-              {j.lastError && (
-                <div style={{fontSize:11,color:"#f0a090",marginTop:4,background:"rgba(240,160,144,0.1)",padding:"4px 8px",borderRadius:4}}>
-                  Error: {j.lastError} (Attempts: {j.attempts})
+            : ["FAILED","STUCK"].includes(j.status)
+        ).map(j => {
+          const mapped = getMappedStatus(j.status);
+          return (
+            <div key={j.id} style={{...S.card,marginBottom:10,padding:"14px 18px",display:"flex",alignItems:"center",gap:16}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,color:"var(--text-primary)",fontWeight:600}}>{j.post?.title||"Unknown Post"}</div>
+                <div style={{fontSize:12,color:"var(--text-muted)",marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
+                  <div><strong>Publish Time:</strong> {new Date(j.publishAt).toLocaleString()}</div>
+                  <div><strong>Created Time:</strong> {new Date(j.createdAt).toLocaleString()}</div>
+                  <div><strong>Retry Count:</strong> {j.attempts}</div>
+                  {j.lastError && (
+                    <div style={{fontSize:11,color:"#f0a090",marginTop:4,background:"rgba(240,160,144,0.1)",padding:"6px 10px",borderRadius:6}}>
+                      <strong>Failure Reason:</strong> {j.lastError}
+                    </div>
+                  )}
+                  {j.instagramMediaId && (
+                    <div style={{fontSize:11,color:"#a8c8a0",marginTop:4}}><strong>Media ID:</strong> {j.instagramMediaId}</div>
+                  )}
                 </div>
-              )}
-              {j.instagramMediaId && (
-                <div style={{fontSize:11,color:"#a8c8a0",marginTop:4}}>Media ID: {j.instagramMediaId}</div>
-              )}
+              </div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+                <Tag label={mapped.label} color={mapped.color} />
+                {["FAILED", "STUCK"].includes(j.status) && (
+                  <button onClick={async()=>{try{await apiRetryPublishingJob(j.id);showToast("Job retry queued successfully!");const hist=await apiGetPublishingHistory();setPubHistory(hist);}catch(err){console.error("[Retry Job Error]", err);showToast("Failed to retry job","error");}}} style={{...S.ghost,fontSize:11,color:"var(--accent-color)",padding:"4px 12px",border:"1px solid var(--accent-light)",borderRadius:12}}>
+                    Retry Publish
+                  </button>
+                )}
+              </div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
-              <Tag label={j.status} color={j.status==="COMPLETED"?"#a8c8a0":j.status==="FAILED"?"#f0a090":"#e2c792"} />
-              {j.status==="FAILED" && (
-                <button onClick={async()=>{try{await apiRetryPublishingJob(j.id);showToast("Job retry queued successfully!");const hist=await apiGetPublishingHistory();setPubHistory(hist);}catch(err){showToast("Failed to retry job","error");}}} style={{...S.ghost,fontSize:11,color:"var(--accent-color)",padding:"4px 12px",border:"1px solid var(--accent-light)",borderRadius:12}}>
-                  Retry Publish
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
